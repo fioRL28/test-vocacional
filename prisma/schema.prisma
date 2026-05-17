@@ -1,8 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
   provider = "prisma-client"
   output   = "../app/generated/prisma"
@@ -10,4 +5,176 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+}
+
+enum TestSessionStatus {
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum QuestionStage {
+  EXPLORATION
+  DEEPENING
+  CONTEXT
+}
+
+enum QuestionKind {
+  LIKERT
+  OPEN
+}
+
+model Dimension {
+  id            Int                     @id @default(autoincrement())
+  code          String                  @unique @db.VarChar(80)
+  name          String                  @db.VarChar(100)
+  description   String?
+  questions     Question[]
+  sessionScores SessionDimensionScore[]
+  profiles      ProfileDimension[]
+
+  @@map("dimensions")
+}
+
+model Question {
+  id          Int            @id @default(autoincrement())
+  text        String
+  kind        QuestionKind   @default(LIKERT)
+  stage       QuestionStage  @default(EXPLORATION)
+  trigger     String?        @db.VarChar(80)
+  difficulty  Int            @default(1)
+  isActive    Boolean        @default(true)
+  dimensionId Int?
+  createdAt   DateTime       @default(now())
+  dimension   Dimension?     @relation(fields: [dimensionId], references: [id])
+  answers     TestAnswer[]
+  openAnswers TestOpenAnswer[]
+
+  @@index([dimensionId])
+  @@map("questions")
+}
+
+model VocationalProfile {
+  id          Int                @id @default(autoincrement())
+  code        String             @unique @db.VarChar(100)
+  name        String             @db.VarChar(150)
+  description String?
+  dimensions  ProfileDimension[]
+  sessions    TestSession[]
+  results     TestResult[]
+
+  @@map("vocational_profiles")
+}
+
+model ProfileDimension {
+  id          Int               @id @default(autoincrement())
+  profileId   Int
+  dimensionId Int
+  weight      Decimal           @default(1.0) @db.Decimal(5, 2)
+  profile     VocationalProfile @relation(fields: [profileId], references: [id])
+  dimension   Dimension         @relation(fields: [dimensionId], references: [id])
+
+  @@unique([profileId, dimensionId])
+  @@map("profile_dimensions")
+}
+
+model TestSession {
+  id              String                  @id @default(uuid()) @db.Uuid
+  participantCode String?                 @db.VarChar(80)
+  grade           String?                 @db.VarChar(50)
+  schoolCode      String?                 @db.VarChar(80)
+  ageRange        String?                 @db.VarChar(20)
+  consentAccepted Boolean                 @default(false)
+  isPilotData     Boolean                 @default(true)
+  status          TestSessionStatus       @default(IN_PROGRESS)
+  startedAt       DateTime                @default(now())
+  finishedAt      DateTime?
+  totalQuestions  Int                     @default(0)
+  finalProfileId  Int?
+  finalProfile    VocationalProfile?      @relation(fields: [finalProfileId], references: [id])
+  answers         TestAnswer[]
+  openAnswers     TestOpenAnswer[]
+  scores          SessionDimensionScore[]
+  result          TestResult?
+
+  @@index([status])
+  @@index([participantCode])
+  @@index([isPilotData])
+  @@map("test_sessions")
+}
+
+model TestAnswer {
+  id            Int         @id @default(autoincrement())
+  sessionId     String      @db.Uuid
+  questionId    Int
+  answerValue   Int
+  questionOrder Int
+  answeredAt    DateTime    @default(now())
+  session       TestSession @relation(fields: [sessionId], references: [id])
+  question      Question    @relation(fields: [questionId], references: [id])
+
+  @@unique([sessionId, questionId])
+  @@unique([sessionId, questionOrder])
+  @@index([questionId])
+  @@map("test_answers")
+}
+
+model TestOpenAnswer {
+  id         Int         @id @default(autoincrement())
+  sessionId  String      @db.Uuid
+  questionId Int
+  trigger    String      @db.VarChar(80)
+  answerText String
+  order      Int
+  answeredAt DateTime    @default(now())
+  session    TestSession @relation(fields: [sessionId], references: [id])
+  question   Question    @relation(fields: [questionId], references: [id])
+
+  @@unique([sessionId, questionId])
+  @@unique([sessionId, order])
+  @@index([questionId])
+  @@map("test_open_answers")
+}
+
+model SessionDimensionScore {
+  id                Int         @id @default(autoincrement())
+  sessionId         String      @db.Uuid
+  dimensionId       Int
+  score             Int         @default(0)
+  questionsAnswered Int         @default(0)
+  averageScore      Decimal     @default(0) @db.Decimal(4, 2)
+  session           TestSession @relation(fields: [sessionId], references: [id])
+  dimension         Dimension   @relation(fields: [dimensionId], references: [id])
+
+  @@unique([sessionId, dimensionId])
+  @@map("session_dimension_scores")
+}
+
+model TestResult {
+  id                 Int               @id @default(autoincrement())
+  sessionId          String            @unique @db.Uuid
+  predictedProfileId Int
+  confidenceScore    Decimal?          @db.Decimal(5, 2)
+  recommendationText String?
+  modelUsed          String            @db.VarChar(100)
+  createdAt          DateTime          @default(now())
+  session            TestSession       @relation(fields: [sessionId], references: [id])
+  predictedProfile   VocationalProfile @relation(fields: [predictedProfileId], references: [id])
+
+  @@map("test_results")
+}
+
+model MlExperiment {
+  id              Int      @id @default(autoincrement())
+  modelName       String   @db.VarChar(100)
+  datasetVersion  String   @db.VarChar(80)
+  accuracy        Decimal  @db.Decimal(6, 4)
+  precision       Decimal  @db.Decimal(6, 4)
+  recall          Decimal  @db.Decimal(6, 4)
+  f1Score         Decimal  @db.Decimal(6, 4)
+  confusionMatrix Json
+  artifactPath    String?  @db.VarChar(255)
+  trainedAt       DateTime @default(now())
+
+  @@map("ml_experiments")
 }
