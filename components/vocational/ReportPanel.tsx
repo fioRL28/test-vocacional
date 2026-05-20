@@ -1,13 +1,13 @@
 ﻿"use client";
 
 import { dimensionLabels, questions } from "@/lib/vocational/data";
-import type { Answer, Profile } from "@/lib/vocational/types";
+import type { Answer, Profile, ResultIndicators } from "@/lib/vocational/types";
 
 export function ReportPanel({
   answers,
   areas,
-  clarity,
   compatiblePaths,
+  indicators,
   profile,
   ranked,
   signals,
@@ -15,14 +15,18 @@ export function ReportPanel({
 }: {
   answers: Answer[];
   areas: string[];
-  clarity: number;
   compatiblePaths: string[];
+  indicators: ResultIndicators;
   profile: Profile & { score: number };
   ranked: Array<Profile & { score: number }>;
   signals: string[];
   strengths: string[];
 }) {
-  const secondProfile = ranked[1];
+  const additionalRoutes = ranked
+    .filter((item) => item.id !== profile.id)
+    .slice(0, 3)
+    .map((item) => item.name);
+  const compatibleRouteNames = compatiblePaths.length > 0 ? compatiblePaths : additionalRoutes;
 
   return (
     <aside className="print-report hidden rounded-lg border border-[#dfe5ef] bg-white p-4 shadow-sm print:block">
@@ -40,8 +44,19 @@ export function ReportPanel({
         <h3 className="font-semibold">Resultado</h3>
         <div className="mt-3 space-y-2 text-sm">
           <ReportLine label="Perfil principal" value={profile.name} />
-          <ReportLine label="Perfil secundario" value={secondProfile?.name ?? "No definido"} />
-          <ReportLine label="Nivel de claridad" value={`${clarity.toFixed(0)}%`} />
+          <ReportLine
+            label="Rutas compatibles adicionales"
+            value={compatibleRouteNames.length > 0 ? compatibleRouteNames.join(", ") : "No definido"}
+          />
+          <ReportLine label="Claridad del perfil" value={`${indicators.profileClarity.toFixed(0)}%`} />
+          <ReportLine
+            label="Incertidumbre vocacional"
+            value={`${indicators.vocationalUncertainty.toFixed(0)}%`}
+          />
+          <ReportLine
+            label="Presión externa"
+            value={`${indicators.externalPressure.toFixed(0)}%`}
+          />
         </div>
       </section>
 
@@ -67,11 +82,11 @@ export function ReportPanel({
         </div>
       </section>
 
-      {compatiblePaths.length > 0 && (
+      {compatibleRouteNames.length > 0 && (
         <section className="mt-5 border-t border-[#dfe5ef] pt-4">
           <h3 className="font-semibold">Rutas compatibles adicionales</h3>
           <div className="mt-3 space-y-2">
-            {compatiblePaths.map((path) => (
+            {compatibleRouteNames.map((path) => (
               <p key={path} className="rounded-md bg-[#f2f5f8] px-3 py-2 text-xs leading-5">
                 {path}
               </p>

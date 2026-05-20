@@ -26,6 +26,54 @@ export type ResponsePattern = {
   suggestedDimensions?: string[];
 };
 
+export type SemanticFocusPattern = {
+  id: string;
+  semanticFocus: string[];
+  keywords: string[];
+  phrases: string[];
+};
+
+export const semanticFocusPatterns: SemanticFocusPattern[] = [
+  {
+    id: "visual-spatial-design",
+    semanticFocus: [
+      "visual-spatial-creativity",
+      "applied-design",
+      "spatial-organization",
+    ],
+    keywords: [
+      "arquitectura",
+      "espacio",
+      "espacios",
+      "estructura",
+      "estructuras",
+      "ambiente",
+      "ambientes",
+      "distribucion",
+      "distribuir",
+      "plano",
+      "planos",
+      "maqueta",
+      "maquetas",
+      "interiores",
+      "visual",
+      "forma",
+      "formas",
+    ],
+    phrases: [
+      "organizacion visual",
+      "organización visual",
+      "diseno de espacios",
+      "diseño de espacios",
+      "diseno espacial",
+      "diseño espacial",
+      "experiencia de personas",
+      "como se usa un espacio",
+      "como se sienten las personas en un espacio",
+    ],
+  },
+];
+
 export const responsePatterns: ResponsePattern[] = [
   {
     id: "uncertainty",
@@ -220,6 +268,30 @@ export function analyzeNarrativeText(text: string) {
     clarityImpact: matchedPatterns.reduce(
       (total, pattern) => total + pattern.clarityImpact,
       0,
+    ),
+  };
+}
+
+export function analyzeSemanticFocusText(text: string) {
+  const normalized = normalizeText(text);
+
+  if (!normalized) {
+    return {
+      matchedPatterns: [],
+      semanticFocus: [],
+    };
+  }
+
+  const matchedPatterns = semanticFocusPatterns.filter((pattern) => {
+    const values = [...pattern.keywords, ...pattern.phrases].map(normalizeText);
+
+    return values.some((value) => value && normalized.includes(value));
+  });
+
+  return {
+    matchedPatterns: matchedPatterns.map((pattern) => pattern.id),
+    semanticFocus: unique(
+      matchedPatterns.flatMap((pattern) => pattern.semanticFocus),
     ),
   };
 }

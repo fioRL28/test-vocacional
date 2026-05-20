@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { randomUUID } from "crypto";
 import {
   dimensionLabels,
   profiles,
@@ -95,11 +96,20 @@ export async function seedVocationalCatalog() {
 }
 
 export async function createTestSession() {
-  const sessionCount = await prisma.testSession.count({
-    where: {
-      isPilotData: true,
-    },
-  });
+  const supportsAnonymousPilotFields = await hasTestSessionColumn("participantCode");
+
+  if (!supportsAnonymousPilotFields) {
+    const sessionId = randomUUID();
+    const rows = await prisma.$queryRaw<Array<{ id: string }>>`
+      INSERT INTO test_sessions (id, status)
+      VALUES (${sessionId}::uuid, 'IN_PROGRESS'::"TestSessionStatus")
+      RETURNING id::text AS id
+    `;
+
+    return rows[0].id;
+  }
+
+  const sessionCount = await getPilotSessionCount();
   const participantCode = `PILOT-${String(sessionCount + 1).padStart(4, "0")}`;
   const session = await prisma.testSession.create({
     data: {
@@ -109,6 +119,35 @@ export async function createTestSession() {
   });
 
   return session.id;
+}
+
+async function hasTestSessionColumn(columnName: string) {
+  const rows = await prisma.$queryRaw<Array<{ column_name: string }>>`
+    SELECT column_name
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'test_sessions'
+      AND column_name = ${columnName}
+    LIMIT 1
+  `;
+
+  return rows.length > 0;
+}
+
+async function getPilotSessionCount() {
+  const hasPilotFlag = await hasTestSessionColumn("isPilotData");
+
+  if (!hasPilotFlag) {
+    return prisma.testSession.count();
+  }
+
+  const rows = await prisma.$queryRaw<Array<{ count: bigint }>>`
+    SELECT COUNT(*)::bigint AS count
+    FROM test_sessions
+    WHERE "isPilotData" = true
+  `;
+
+  return Number(rows[0]?.count ?? 0);
 }
 
 export async function persistAnswer(sessionId: string, answer: Answer) {
@@ -209,6 +248,17 @@ async function updateDimensionScore(sessionId: string, dimensionCode: Dimension)
 }
 
 export async function persistSessionProgress(sessionId: string, answers: Answer[]) {
+  const supportsAnonymousPilotFields = await hasTestSessionColumn("participantCode");
+
+  if (!supportsAnonymousPilotFields) {
+    await prisma.$executeRaw`
+      UPDATE test_sessions
+      SET "totalQuestions" = ${answers.length}
+      WHERE id = ${sessionId}::uuid
+    `;
+    return;
+  }
+
   await prisma.testSession.update({
     where: { id: sessionId },
     data: {
@@ -225,6 +275,19 @@ export async function finalizeSession(sessionId: string, answers: Answer[]) {
 
   if (!profile) return;
 
+  const supportsAnonymousPilotFields = await hasTestSessionColumn("participantCode");
+
+  if (!supportsAnonymousPilotFields) {
+    await prisma.$executeRaw`
+      UPDATE test_sessions
+      SET
+        status = 'COMPLETED'::"TestSessionStatus",
+        "finishedAt" = NOW(),
+        "totalQuestions" = ${answers.length},
+        "finalProfileId" = ${profile.id}
+      WHERE id = ${sessionId}::uuid
+    `;
+  } else {
   await prisma.testSession.update({
     where: { id: sessionId },
     data: {
@@ -234,6 +297,7 @@ export async function finalizeSession(sessionId: string, answers: Answer[]) {
       finalProfileId: profile.id,
     },
   });
+  }
 
   await prisma.testResult.upsert({
     where: { sessionId },
@@ -264,5 +328,7 @@ export function getDatasetRowFromAnswers(sessionId: string, answers: Answer[]) {
     openAnswers,
     predictedProfile: result.best.id,
     confidence: result.confidence,
+    indicators: result.indicators,
+    validationObservation: result.validationObservation,
   };
 }

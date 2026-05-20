@@ -1,10 +1,11 @@
 import Link from "next/link";
+import Image from "next/image";
 import { DelayedResultsLink } from "@/components/vocational/DelayedResultsLink";
 import { QuestionView } from "@/components/vocational/QuestionView";
 import { ResultView } from "@/components/vocational/ResultView";
-import {
-  maxLikertQuestions,
-} from "@/lib/vocational/data";
+import brujulaImage from "@/img/brujula-direcciones.png";
+import pensandoImage from "@/img/pensando.png";
+import { maxLikertQuestions } from "@/lib/vocational/data";
 import {
   detectContradictions,
   encodeAnswers,
@@ -124,7 +125,7 @@ export default async function Home({
             {showResults ? (
               <ResultView
                 answers={answers}
-                confidence={result.confidence}
+                indicators={result.indicators}
                 profile={result.best}
                 ranked={result.ranked}
                 signals={getSignals(answers)}
@@ -155,8 +156,13 @@ function AppSidebar({
   return (
     <aside className="self-start rounded-2xl border border-[#ebe7fb] bg-white p-5 shadow-[0_16px_45px_rgba(83,67,160,0.08)]">
       <div className="flex items-center gap-3">
-        <div className="grid h-12 w-12 place-items-center rounded-full bg-[#efe9ff] text-2xl text-[#7c3aed]">
-          ◇
+        <div className="grid h-14 w-14 place-items-center">
+          <Image
+            src={brujulaImage}
+            alt="Brújula de RutaFuturo"
+            className="h-[52px] w-[52px] object-contain"
+            priority={false}
+          />
         </div>
         <div>
           <p className="text-xl font-bold">RutaFuturo</p>
@@ -208,8 +214,13 @@ function AppSidebar({
       </div>
 
       <div className="mt-5 rounded-2xl border border-[#e4def5] bg-[#fbfaff] p-4 text-center">
-        <div className="mx-auto grid h-32 w-32 place-items-center rounded-full bg-[#f1ecff] text-5xl">
-          🧭
+        <div className="mx-auto grid h-32 w-32 place-items-center overflow-hidden rounded-full bg-[#f1ecff]">
+          <Image
+            src={pensandoImage}
+            alt="Estudiante pensando en sus intereses"
+            className="h-28 w-28 object-contain"
+            priority={false}
+          />
         </div>
         <p className="mt-4 text-sm font-semibold text-[#273153]">
           Explora con calma tus intereses y fortalezas.

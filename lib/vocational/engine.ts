@@ -1,6 +1,7 @@
 import {
   adaptiveFocusByRiasec,
   bigFiveDimensions,
+  COMMON_BASELINE_QUESTION_COUNT,
   contextDimensions,
   dimensionLabels,
   maxLikertQuestions,
@@ -11,9 +12,10 @@ import {
   questions,
   riasecDimensions,
 } from "./data";
-import { analyzeNarrativeText } from "./responsePatterns";
+import { analyzeNarrativeText, analyzeSemanticFocusText } from "./responsePatterns";
 import type {
   AdaptiveStatus,
+  AdaptiveDiagnostics,
   Answer,
   ContradictionStatus,
   Dimension,
@@ -21,8 +23,17 @@ import type {
   OpenAnswer,
   Profile,
   Question,
+  ResultIndicators,
   SearchParams,
+  SemanticCoverage,
+  ValidationObservation,
 } from "./types";
+
+export const CORE_THRESHOLD = 3.5;
+const NEARBY_PROFILE_GAP = 1.5;
+const SEMANTIC_FOCUS_THRESHOLD = 3.5;
+const MIN_SEMANTIC_COVERAGE_RATIO = 0.66;
+const BROAD_INTEREST_DIMENSION_COUNT = 4;
 
 function getParam(searchParams: SearchParams, key: string) {
   const value = searchParams[key];
@@ -338,6 +349,16 @@ function getNarrativeAnalysis(answers: Answer[]) {
   };
 }
 
+function getNarrativeSemanticFocus(answers: Answer[]) {
+  return Array.from(
+    new Set(
+      getNarrativeTexts(answers).flatMap(
+        (text) => analyzeSemanticFocusText(text).semanticFocus,
+      ),
+    ),
+  );
+}
+
 function buildInitialScores() {
   return measurableDimensions.reduce(
     (acc, dimension) => ({
@@ -586,7 +607,7 @@ export function shouldFinishTest(
   const likertCount = getLikertAnswers(responses).length;
 
   if (likertCount >= maxLikertQuestions) return true;
-  if (likertCount < minLikertQuestions) return false;
+  if (likertCount < COMMON_BASELINE_QUESTION_COUNT) return false;
 
   const consistency = getConsistencyScore(responses);
   const differentiation = calculateDifferentiationScore(scores);
@@ -644,7 +665,9 @@ export function getCurrentQuestionTarget(
 ) {
   const likertCount = getLikertAnswers(responses).length;
 
-  if (likertCount < minLikertQuestions) return minLikertQuestions;
+  if (likertCount < COMMON_BASELINE_QUESTION_COUNT) {
+    return COMMON_BASELINE_QUESTION_COUNT;
+  }
 
   const consistency = getConsistencyScore(responses);
   const differentiation = calculateDifferentiationScore(scores);
@@ -695,17 +718,206 @@ function scoreProfile(profile: Profile, averages: Record<Dimension, number>) {
   }, 0);
 }
 
-export function getBestProfile(answers: Answer[]) {
-  const averages = getAverages(answers);
-  const ranked = profiles
+export function getProfileCoreStatus(
+  profile: Profile,
+  averages: Record<Dimension, number>,
+  threshold = CORE_THRESHOLD,
+) {
+  const coreScores = profile.coreRiasec.map((dimension) => averages[dimension] ?? 0);
+  const coreAverage = coreScores.length
+    ? coreScores.reduce((total, score) => total + score, 0) / coreScores.length
+    : 0;
+  const missingCoreDimensions = profile.coreRiasec.filter(
+    (dimension) => (averages[dimension] ?? 0) < threshold,
+  );
+
+  return {
+    coreAverage,
+    coreMeetsThreshold: coreAverage >= threshold,
+    missingCoreDimensions,
+  };
+}
+
+export function getStrictCoreStatus(
+  profile: Profile,
+  averages: Record<Dimension, number>,
+  threshold = CORE_THRESHOLD,
+) {
+  const missingCoreDimensions = profile.coreRiasec.filter(
+    (dimension) => (averages[dimension] ?? 0) < threshold,
+  );
+
+  return {
+    coreMeetsStrictThreshold: missingCoreDimensions.length === 0,
+    missingCoreDimensions,
+  };
+}
+
+function getRankedProfiles(averages: Record<Dimension, number>) {
+  return profiles
     .map((profile) => ({
       ...profile,
       score: scoreProfile(profile, averages),
     }))
     .sort((a, b) => b.score - a.score);
+}
 
-  const best = ranked[0];
-  const second = ranked[1];
+export function getCompatibleProfiles(
+  profileRanking: Array<Profile & { score: number }>,
+  mainProfileId: string,
+  scoreGap = 2,
+) {
+  const topScore = profileRanking[0]?.score ?? 0;
+
+  return profileRanking.filter(
+    (profile) => profile.id !== mainProfileId && profile.score >= topScore - scoreGap,
+  );
+}
+
+export function getNearbyProfiles(
+  profileRanking: Array<Profile & { score: number }>,
+  gap = NEARBY_PROFILE_GAP,
+) {
+  const topScore = profileRanking[0]?.score ?? 0;
+
+  return profileRanking.filter((profile) => topScore - profile.score <= gap);
+}
+
+function getQuestionSemanticFocusByDimension(dimension: Dimension) {
+  return Array.from(
+    new Set(
+      questions
+        .filter((question) => question.kind === "likert" && question.dimension === dimension)
+        .flatMap((question) => question.semanticFocus ?? []),
+    ),
+  );
+}
+
+export function getSemanticCoverage(
+  answers: Answer[],
+  averages = getAverages(answers),
+) {
+  const answeredQuestionIds = new Set(answers.map((answer) => answer.questionId));
+
+  return measurableDimensions.map((dimension) => {
+    const expectedFocus = getQuestionSemanticFocusByDimension(dimension);
+    const exploredFocus = Array.from(
+      new Set(
+        questions
+          .filter(
+            (question) =>
+              question.kind === "likert" &&
+              question.dimension === dimension &&
+              answeredQuestionIds.has(question.id),
+          )
+          .flatMap((question) => question.semanticFocus ?? []),
+      ),
+    );
+    const missingFocus = expectedFocus.filter((focus) => !exploredFocus.includes(focus));
+    const coverageRatio = expectedFocus.length
+      ? exploredFocus.length / expectedFocus.length
+      : 1;
+
+    return {
+      dimension,
+      exploredFocus,
+      missingFocus,
+      coverageRatio: averages[dimension] >= SEMANTIC_FOCUS_THRESHOLD ? coverageRatio : 1,
+    };
+  }) satisfies SemanticCoverage[];
+}
+
+function getMissingSemanticFocus(
+  answers: Answer[],
+  averages: Record<Dimension, number>,
+) {
+  return getSemanticCoverage(answers, averages).filter(
+    (coverage) =>
+      averages[coverage.dimension] >= SEMANTIC_FOCUS_THRESHOLD &&
+      coverage.missingFocus.length > 0 &&
+      coverage.coverageRatio < MIN_SEMANTIC_COVERAGE_RATIO,
+  );
+}
+
+export function getAdaptiveDiagnostics(
+  answers: Answer[],
+  averages = getAverages(answers),
+  profileRanking = getRankedProfiles(averages),
+): AdaptiveDiagnostics {
+  const likertCount = getLikertAnswers(answers).length;
+  const differentiation = calculateDifferentiationScore(averages);
+  const nearbyProfiles = getNearbyProfiles(profileRanking);
+  const highUncertainty =
+    averages.incertidumbre >= 4 ||
+    averages.presion >= 4 ||
+    averages.neuroticismo >= 4;
+  const topProfile = profileRanking[0];
+  const secondProfile = profileRanking[1];
+  const profileGap = topProfile && secondProfile
+    ? topProfile.score - secondProfile.score
+    : 0;
+  const hasNearbyProfiles = nearbyProfiles.length > 1 && profileGap <= NEARBY_PROFILE_GAP;
+  const hasBroadInterestPattern =
+    differentiation.possibleBroadInterest ||
+    differentiation.highDimensions.length >= BROAD_INTEREST_DIMENSION_COUNT;
+  const lowDifferentiation =
+    hasNearbyProfiles ||
+    hasBroadInterestPattern;
+  const weakCoreProfileIds = nearbyProfiles
+    .filter((profile) => !getStrictCoreStatus(profile, averages).coreMeetsStrictThreshold)
+    .map((profile) => profile.id);
+  const missingSemanticFocus = getMissingSemanticFocus(answers, averages);
+  const topProfileHasWeakCore = Boolean(
+    topProfile && weakCoreProfileIds.includes(topProfile.id),
+  );
+  const needsSemanticDeepening = missingSemanticFocus.length > 0;
+  const needsCoreDeepening = weakCoreProfileIds.length > 0;
+  const hasRouteConflict =
+    hasNearbyProfiles ||
+    hasBroadInterestPattern ||
+    (nearbyProfiles.length > 1 && topProfileHasWeakCore);
+  const phaseReasons = [
+    likertCount < COMMON_BASELINE_QUESTION_COUNT ? "baseline-incomplete" : null,
+    hasNearbyProfiles ? "nearby-profiles" : null,
+    hasBroadInterestPattern ? "low-differentiation" : null,
+    topProfileHasWeakCore ? "top-profile-weak-core" : null,
+    highUncertainty ? "high-uncertainty" : null,
+    needsSemanticDeepening ? "missing-semantic-focus" : null,
+    needsCoreDeepening ? "weak-core-evidence" : null,
+  ].filter((reason): reason is string => Boolean(reason));
+  const phase =
+    likertCount < COMMON_BASELINE_QUESTION_COUNT
+      ? "baseline"
+      : hasRouteConflict
+        ? "discrimination"
+        : highUncertainty || needsSemanticDeepening || needsCoreDeepening
+          ? "deepening"
+          : "closure";
+
+  return {
+    phase,
+    phaseReasons,
+    highUncertainty,
+    lowDifferentiation,
+    nearbyProfileIds: nearbyProfiles.map((profile) => profile.id),
+    missingSemanticFocus,
+    weakCoreProfileIds,
+  };
+}
+
+export function getBestProfile(answers: Answer[]) {
+  const averages = getAverages(answers);
+  const ranked = getRankedProfiles(averages);
+
+  const strictCoreRanked = ranked.filter(
+    (profile) => getStrictCoreStatus(profile, averages).coreMeetsStrictThreshold,
+  );
+  const lowCoreConfidence = strictCoreRanked.length === 0;
+  const best = strictCoreRanked[0] ?? ranked[0];
+  const second = ranked.find((profile) => profile.id !== best.id) ?? ranked[1];
+  const coreRejectedProfiles = ranked.filter(
+    (profile) => !getStrictCoreStatus(profile, averages).coreMeetsStrictThreshold,
+  );
   const differentiation = calculateDifferentiationScore(averages);
   const resolution = getConflictResolutionStatus(averages, answers);
   const narrativeReliability = getNarrativeReliability(getNarrativeTexts(answers));
@@ -727,8 +939,39 @@ export function getBestProfile(answers: Answer[]) {
       64 + (best.score - second.score) * 10 - uncertaintyPenalty - pressurePenalty - neuroticismPenalty,
     ),
   ) - differentiation.clarityPenalty - narrativePenalty - contradictionPenalty - earlyFinishPenalty;
+  const profileClarity = Math.max(35, confidence);
+  const indicators: ResultIndicators = {
+    profileClarity,
+    vocationalUncertainty: Math.min(100, Math.max(0, averages.incertidumbre * 20)),
+    externalPressure: Math.min(100, Math.max(0, averages.presion * 20)),
+  };
+  const validationObservation: ValidationObservation = getValidationObservation(answers);
 
-  return { best, ranked, confidence: Math.max(35, confidence), averages };
+  return {
+    best,
+    ranked,
+    confidence: profileClarity,
+    indicators,
+    averages,
+    traditionalBest: ranked[0],
+    lowCoreConfidence,
+    coreRejectedProfiles,
+    validationObservation,
+  };
+}
+
+function getValidationObservation(answers: Answer[]): ValidationObservation {
+  const openObservations = getOpenAnswers(answers)
+    .map((answer) => ({
+      careerReference: answer.careerReference,
+      observedMismatch: answer.observedMismatch,
+    }))
+    .filter(
+      (observation) =>
+        Boolean(observation.careerReference) || observation.observedMismatch === true,
+    );
+
+  return openObservations[0] ?? {};
 }
 
 function getTriggeredOpenQuestion(answers: Answer[]) {
@@ -763,6 +1006,79 @@ function getTriggeredOpenQuestion(answers: Answer[]) {
   return questions.find((question) => question.kind === "open" && question.trigger === nextTrigger) ?? null;
 }
 
+function hasNearbyPair(nearbyProfileIds: string[], first: string, second: string) {
+  return nearbyProfileIds.includes(first) && nearbyProfileIds.includes(second);
+}
+
+function getTriggeredContrastQuestion(answers: Answer[]) {
+  const averages = getAverages(answers);
+  const openCount = getOpenAnswers(answers).length;
+  const usedQuestionIds = new Set(answers.map((answer) => answer.questionId));
+  const narrativeSemanticFocus = getNarrativeSemanticFocus(answers);
+
+  if (openCount >= maxOpenQuestions) {
+    return null;
+  }
+
+  const diagnostics = getAdaptiveDiagnostics(
+    answers,
+    averages,
+    getRankedProfiles(averages),
+  );
+  const hasNearbyProfiles = diagnostics.nearbyProfileIds.length > 1;
+  const semanticCoverage = getSemanticCoverage(answers, averages);
+  const highDimensionSemanticGaps = semanticCoverage.filter(
+    (coverage) =>
+      averages[coverage.dimension] >= SEMANTIC_FOCUS_THRESHOLD &&
+      coverage.missingFocus.length > 0,
+  );
+  const hasMissingSemanticFocus =
+    diagnostics.missingSemanticFocus.length > 0 ||
+    highDimensionSemanticGaps.length > 0;
+
+  if (
+    diagnostics.phase !== "discrimination" ||
+    !hasNearbyProfiles ||
+    !diagnostics.lowDifferentiation ||
+    !hasMissingSemanticFocus
+  ) {
+    return null;
+  }
+
+  const nearbyProfileIds = diagnostics.nearbyProfileIds;
+  const missingDimensions = new Set(
+    highDimensionSemanticGaps.map((coverage) => coverage.dimension),
+  );
+  const hasSpatialDesignSignal =
+    narrativeSemanticFocus.includes("visual-spatial-creativity") ||
+    narrativeSemanticFocus.includes("applied-design") ||
+    narrativeSemanticFocus.includes("spatial-organization");
+  const candidates = [
+    (nearbyProfileIds.includes("arte-comunicacion-diseno") && missingDimensions.has("artistico")) ||
+    hasSpatialDesignSignal
+      ? 202
+      : null,
+    hasNearbyPair(nearbyProfileIds, "ingenieria-tecnologia", "ciencia-datos-investigacion")
+      ? 201
+      : null,
+    hasNearbyPair(nearbyProfileIds, "salud-apoyo-humano", "educacion-ciencias-sociales")
+      ? 203
+      : null,
+    nearbyProfileIds.includes("negocios-gestion") &&
+    (nearbyProfileIds.includes("educacion-ciencias-sociales") ||
+      nearbyProfileIds.includes("salud-apoyo-humano") ||
+      missingDimensions.has("emprendedor"))
+      ? 204
+      : null,
+  ].filter((id): id is number => Boolean(id));
+
+  return (
+    candidates
+      .map((id) => questions.find((question) => question.id === id))
+      .find((question) => question && !usedQuestionIds.has(question.id)) ?? null
+  );
+}
+
 export function selectNextQuestion(answers: Answer[]) {
   const answeredIds = new Set(answers.map((answer) => answer.questionId));
   const unansweredLikert = questions.filter(
@@ -770,8 +1086,14 @@ export function selectNextQuestion(answers: Answer[]) {
   );
   const likertCount = getLikertAnswers(answers).length;
 
-  if (likertCount < minLikertQuestions) {
+  if (likertCount < COMMON_BASELINE_QUESTION_COUNT) {
     return unansweredLikert[0] ?? null;
+  }
+
+  const triggeredContrastQuestion = getTriggeredContrastQuestion(answers);
+
+  if (triggeredContrastQuestion) {
+    return triggeredContrastQuestion;
   }
 
   const triggeredOpenQuestion = getTriggeredOpenQuestion(answers);
@@ -781,6 +1103,8 @@ export function selectNextQuestion(answers: Answer[]) {
   }
 
   const averages = getAverages(answers);
+  const diagnostics = getAdaptiveDiagnostics(answers, averages, getRankedProfiles(averages));
+  const narrativeSemanticFocus = getNarrativeSemanticFocus(answers);
   const likertAnswers = getLikertAnswers(answers);
   const recentDimensions = likertAnswers.slice(-2).map((answer) => answer.dimension);
   const dimensionCounts = likertAnswers.reduce(
@@ -803,8 +1127,31 @@ export function selectNextQuestion(answers: Answer[]) {
   const priorityDimensions = Array.from(
     new Set(topRiasec.flatMap((dimension) => adaptiveFocusByRiasec[dimension])),
   );
+  const semanticFocusQuestion = diagnostics.missingSemanticFocus
+    .flatMap((coverage) =>
+      unansweredLikert.filter(
+        (question) =>
+          question.dimension === coverage.dimension &&
+          (question.semanticFocus ?? []).some((focus) =>
+            coverage.missingFocus.includes(focus),
+          ) &&
+          isNotTooRecent(question),
+      ),
+    )
+    .find(Boolean);
+  const narrativeSemanticFocusQuestion = narrativeSemanticFocus.length
+    ? unansweredLikert.find(
+        (question) =>
+          (question.semanticFocus ?? []).some((focus) =>
+            narrativeSemanticFocus.includes(focus),
+          ) &&
+          isNotTooRecent(question),
+      )
+    : undefined;
 
   return (
+    narrativeSemanticFocusQuestion ??
+    semanticFocusQuestion ??
     unansweredLikert.find(
       (question) =>
         question.dimension &&
@@ -881,10 +1228,20 @@ export function processSubmittedAnswer(searchParams: SearchParams) {
   }
 
   if (kind === "open" && question.trigger) {
-    const submittedText = getParam(searchParams, "text")?.trim() || "Sin respuesta";
-    const text = isLowInformationOpenAnswer(submittedText)
+    const guidedChoice = getParam(searchParams, "guidedChoice")?.trim();
+    const unsureDetail = getParam(searchParams, "unsureDetail")?.trim();
+    const submittedText = getParam(searchParams, "text")?.trim();
+    const careerReference = getParam(searchParams, "careerReference")?.trim();
+    const observedMismatch = getParam(searchParams, "observedMismatch") === "true";
+    const guidedText = [
+      guidedChoice ? `Opción guiada: ${guidedChoice}` : null,
+      unsureDetail ? `Detalle: ${unsureDetail}` : null,
+      submittedText ? `Comentario: ${submittedText}` : null,
+    ].filter(Boolean).join(" | ");
+    const rawText = guidedText || submittedText || "Sin respuesta";
+    const text = isLowInformationOpenAnswer(rawText)
       ? "No lo tengo claro todavía."
-      : submittedText;
+      : rawText;
 
     return [
       ...baseAnswers,
@@ -894,6 +1251,8 @@ export function processSubmittedAnswer(searchParams: SearchParams) {
         trigger: question.trigger,
         text,
         order: baseAnswers.length + 1,
+        ...(careerReference ? { careerReference } : {}),
+        ...(observedMismatch ? { observedMismatch } : {}),
       },
     ] satisfies Answer[];
   }
@@ -1004,6 +1363,7 @@ export function getAdaptiveStatus(
       contradiction: "contradicción entre afinidad y tolerancia",
       motivation: "motivación personal",
       prioritization: "amplitud de intereses",
+      contrast: "rutas cercanas o ambigüedad semántica",
     };
 
     return {
@@ -1012,21 +1372,28 @@ export function getAdaptiveStatus(
     };
   }
 
-  if (likertCount < riasecDimensions.length) {
+  if (likertCount < COMMON_BASELINE_QUESTION_COUNT) {
     return {
-      title: "Exploración inicial de intereses",
-      detail: "Primero se mide una señal inicial en las seis dimensiones de intereses antes de personalizar la ruta.",
+      title: "Núcleo común inicial",
+      detail: "Primero se completa un bloque común para crear una base comparable antes de adaptar el recorrido.",
     };
   }
 
   const averages = getAverages(answers);
+  const diagnostics = getAdaptiveDiagnostics(answers, averages, getRankedProfiles(averages));
   const topRiasec = [...riasecDimensions]
     .sort((a, b) => averages[b] - averages[a])
     .slice(0, 3);
+  const phaseDetails: Record<typeof diagnostics.phase, string> = {
+    baseline: "El sistema todavía está formando la base común inicial.",
+    deepening: "La pregunta busca profundizar dimensiones o focos semánticos con poca evidencia.",
+    discrimination: "La pregunta ayuda a diferenciar rutas cercanas o señales poco diferenciadas.",
+    closure: "El sistema ya cuenta con señales suficientes para acercarse al cierre.",
+  };
 
   return {
     title: "Ruta adaptativa activa",
-    detail: `La pregunta se priorizó según tus dimensiones de intereses más altas: ${topRiasec
+    detail: `${phaseDetails[diagnostics.phase]} Dimensiones de interés más altas: ${topRiasec
       .map((dimension) => dimensionLabels[dimension])
       .join(", ")}.`,
   };

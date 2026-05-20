@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { PrintReportButton, ReportPanel } from "./ReportPanel";
-import type { Answer, Profile } from "@/lib/vocational/types";
+import { getCompatibleProfiles } from "@/lib/vocational/engine";
+import type { Answer, Profile, ResultIndicators } from "@/lib/vocational/types";
 
 export function getResultMode(clarity: number) {
   if (clarity >= 75) return "defined";
@@ -8,11 +9,12 @@ export function getResultMode(clarity: number) {
   return "exploration";
 }
 
-export function getCompatiblePaths(profileRanking: Array<Profile & { score: number }>) {
-  const topScore = profileRanking[0]?.score ?? 0;
-  const [mainPath, secondaryPath] = profileRanking;
-  const compatiblePaths = profileRanking
-    .filter((profile, index) => index > 0 && profile.score >= topScore - 2)
+export function getCompatiblePaths(
+  profileRanking: Array<Profile & { score: number }>,
+  mainProfileId: string,
+) {
+  const mainPath = profileRanking.find((profile) => profile.id === mainProfileId);
+  const compatiblePaths = getCompatibleProfiles(profileRanking, mainProfileId)
     .map((profile) => ({
       id: profile.id,
       name: getProfileRouteLabel(profile.id, profile.name),
@@ -21,7 +23,6 @@ export function getCompatiblePaths(profileRanking: Array<Profile & { score: numb
 
   return {
     mainPath,
-    secondaryPath,
     compatiblePaths,
   };
 }
@@ -36,33 +37,39 @@ export function showSecondaryProfile(profileRanking: Array<Profile & { score: nu
 
 export function ResultView({
   answers,
-  confidence,
+  indicators,
   profile,
   ranked,
   signals,
 }: {
   answers: Answer[];
-  confidence: number;
+  indicators: ResultIndicators;
   profile: Profile & { score: number };
   ranked: Array<Profile & { score: number }>;
   signals: string[];
 }) {
-  const secondProfile = ranked[1];
-  const shouldShowSecondary = showSecondaryProfile(ranked);
-  const scoreGap = secondProfile ? profile.score - secondProfile.score : 0;
-  const isHybrid = Boolean(shouldShowSecondary && secondProfile && scoreGap <= 2.5);
   const profileExtras = getProfilePresentation(profile.id);
-  const compatiblePathResult = getCompatiblePaths(ranked);
+  const compatiblePathResult = getCompatiblePaths(ranked, profile.id);
   const compatiblePaths = compatiblePathResult.compatiblePaths;
   const narrativeClose = getNarrativeClose(profile, ranked);
-  const topScore = ranked[0]?.score || 1;
-  const compatibleRows = ranked.slice(0, 4).map((item, index) => ({
+  const topScore = profile.score || ranked[0]?.score || 1;
+  const hasSimilarAffinity = ranked
+    .filter((item) => item.id !== profile.id)
+    .slice(0, 3)
+    .some((item) => topScore - item.score <= 0.5);
+  const compatibleRows = [
+    profile,
+    ...ranked.filter((item) => item.id !== profile.id).slice(0, 3),
+  ].map((item, index) => ({
     id: item.id,
     name: getProfileRouteLabel(item.id, item.name),
-    percent: Math.max(
-      index === 0 ? Math.round(confidence) : 35,
-      Math.min(100, Math.round((item.score / topScore) * confidence)),
-    ),
+    score: item.score,
+    label:
+      index === 0
+        ? "Área principal"
+        : topScore - item.score <= 0.5
+          ? "Afinidad cercana"
+          : "También podría interesarte",
   }));
   const thingsToTry = getThingsToTry(profile.id);
   const nextSteps = getNextSteps();
@@ -100,8 +107,6 @@ export function ResultView({
             <p className="mt-4 max-w-xl text-sm leading-7 text-[#394267]">
               {profile.description}
             </p>
-            <div className="mt-6 flex flex-wrap gap-3">
-            </div>
           </div>
 
           <div className="rounded-2xl bg-white/80 p-5">
@@ -115,23 +120,37 @@ export function ResultView({
         </section>
 
         <section className="mt-5 grid gap-5 lg:grid-cols-2">
-          <div id="areas-compatibles" className="rounded-2xl border border-[#e7e3f2] bg-white p-5 shadow-[0_14px_40px_rgba(83,67,160,0.06)]">
+          <div
+            id="areas-compatibles"
+            className="rounded-2xl border border-[#e7e3f2] bg-white p-5 shadow-[0_14px_40px_rgba(83,67,160,0.06)]"
+          >
             <h3 className="text-lg font-bold">Tus áreas compatibles</h3>
+            {hasSimilarAffinity && (
+              <p className="mt-2 rounded-2xl bg-[#f7f3ff] px-3 py-3 text-sm leading-6 text-[#394267]">
+                Tus respuestas muestran varias áreas con afinidad similar. Este resultado puede ayudarte
+                a comparar opciones antes de elegir una dirección.
+              </p>
+            )}
             <div className="mt-5 grid gap-4">
               {compatibleRows.map((row, index) => (
-                <div key={row.id} className="grid grid-cols-[44px_1fr] items-center gap-4">
-                  <div className="grid h-11 w-11 place-items-center rounded-full bg-[#e0f2fe] text-xl">
+                <div
+                  key={row.id}
+                  className="grid grid-cols-[48px_1fr] gap-4 rounded-2xl border border-[#efeafa] bg-white p-3"
+                >
+                  <div className="grid h-12 w-12 place-items-center rounded-full bg-[#e0f2fe] text-xl">
                     {getAreaIcon(row.id, index)}
                   </div>
-                  <div>
-                    <div className="flex items-center justify-between gap-3 text-sm font-bold">
-                      <span>{row.name}</span>
-                      <span>{row.percent}%</span>
+                  <div className="min-w-0">
+                    <div className="grid gap-2">
+                      <span className="text-sm font-bold leading-5">{row.name}</span>
+                      <span className="w-fit rounded-full bg-[#f1ecff] px-3 py-1 text-xs font-bold text-[#7c3aed]">
+                        {row.label}
+                      </span>
                     </div>
-                    <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#eceaf4]">
+                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-[#eceaf4]">
                       <div
                         className="h-2 rounded-full bg-[#7c3aed]"
-                        style={{ width: `${row.percent}%` }}
+                        style={{ width: `${getQualitativeBarWidth(index, topScore, row.score)}%` }}
                       />
                     </div>
                   </div>
@@ -154,7 +173,6 @@ export function ResultView({
                     </span>
                     <span className="font-bold">{strength}</span>
                   </div>
-                  <span className="text-[#7c3aed]">● ● ●</span>
                 </div>
               ))}
             </div>
@@ -171,11 +189,7 @@ export function ResultView({
               <h3 className="text-lg font-bold">Qué podrías probar</h3>
               <div className="mt-3 grid gap-3 md:grid-cols-2">
                 {thingsToTry.map((item) => (
-                  <StudentInfoCard
-                    key={item.text}
-                    icon={item.icon}
-                    text={item.text}
-                  />
+                  <StudentInfoCard key={item.text} icon={item.icon} text={item.text} />
                 ))}
               </div>
             </section>
@@ -184,26 +198,18 @@ export function ResultView({
               <h3 className="text-lg font-bold">Próximos pasos</h3>
               <div className="mt-3 grid gap-3 md:grid-cols-2">
                 {nextSteps.map((step) => (
-                  <StudentInfoCard
-                    key={step.text}
-                    icon={step.icon}
-                    text={step.text}
-                  />
+                  <StudentInfoCard key={step.text} icon={step.icon} text={step.text} />
                 ))}
               </div>
             </section>
 
             <section className="rounded-2xl bg-[#f7f3ff] p-4">
-              <h3 className="text-lg font-bold">Lectura narrativa</h3>
-              <p className="mt-2 text-sm leading-7 text-[#394267]">
-                {narrativeClose}
-              </p>
-              {isHybrid && secondProfile && (
-                <p className="mt-2 text-sm leading-7 text-[#394267]">
-                  También aparece una señal cercana con {secondProfile.name}. Explorar experiencias
-                  reales podría ayudarte a descubrir qué actividades disfrutas y cuáles puedes mantener en el tiempo.
-                </p>
-              )}
+              <h3 className="text-lg font-bold">Qué significa tu resultado</h3>
+              <div className="mt-2 grid gap-3 text-sm leading-7 text-[#394267]">
+                {narrativeClose.map((paragraph) => (
+                  <p key={paragraph}>{paragraph}</p>
+                ))}
+              </div>
             </section>
           </div>
         </details>
@@ -212,8 +218,8 @@ export function ResultView({
       <ReportPanel
         answers={answers}
         areas={profileExtras.areas}
-        clarity={confidence}
         compatiblePaths={compatiblePaths.map((path) => path.name)}
+        indicators={indicators}
         profile={profile}
         ranked={ranked}
         signals={signals}
@@ -321,13 +327,31 @@ function getNarrativeClose(
 ) {
   const mainRoute = getProfileRouteLabel(profile.id, profile.name).toLowerCase();
   const nearbyRoutes = ranked
-    .slice(1, 3)
+    .filter((item) => item.id !== profile.id)
+    .slice(0, 2)
     .map((item) => getProfileRouteLabel(item.id, item.name).toLowerCase());
-  const nearbyText = nearbyRoutes.length
-    ? `También aparecieron señales cercanas a ${nearbyRoutes.join(" y ")}.`
-    : "También pueden existir rutas cercanas que vale la pena comparar.";
+  const nearbyText =
+    nearbyRoutes.length === 0
+      ? "Puedes usarlo como punto de partida para mirar opciones relacionadas."
+      : nearbyRoutes.length === 1
+        ? `Hay una ruta cercana en ${nearbyRoutes[0]}, así que podría ser útil compararla con tu resultado principal.`
+        : `Hay cercanía con ${nearbyRoutes[0]} y ${nearbyRoutes[1]}, lo que sugiere que tus intereses pueden moverse entre más de una dirección.`;
 
-  return `Tu resultado muestra una orientación inicial hacia ${mainRoute}. ${nearbyText} Explorar experiencias reales puede ayudarte a descubrir qué actividades disfrutas y cuáles puedes mantener con el tiempo.`;
+  return [
+    `Tu resultado se orienta principalmente hacia ${mainRoute}. ${nearbyText}`,
+    "Para avanzar, prueba actividades pequeñas relacionadas con estas áreas y observa cuáles te dan energía, cuáles te cuestan sostener y cuáles te gustaría repetir.",
+  ];
+}
+
+function getQualitativeBarWidth(index: number, topScore: number, score: number) {
+  if (index === 0) return 100;
+
+  const gap = topScore - score;
+
+  if (gap <= 0.5) return 88;
+  if (gap <= 2) return 72;
+
+  return 56;
 }
 
 function getAreaIcon(profileId: string, index: number) {
