@@ -10,7 +10,8 @@
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
-    "db:clean-pilot": "tsx prisma/clean-pilot-data.ts"
+    "db:clean-pilot": "tsx prisma/clean-pilot-data.ts",
+    "analysis:pretraining": "tsx scripts/export-pretraining-analysis.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",

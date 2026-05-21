@@ -103,7 +103,11 @@ export function QuestionView({
       </h2>
 
       {currentQuestion.kind === "likert" && currentQuestion.dimension ? (
-        <form action={submitVocationalAnswer} className="mt-7 sm:mt-9">
+        <form
+          action={submitVocationalAnswer}
+          className="mt-7 sm:mt-9"
+          suppressHydrationWarning
+        >
           <input type="hidden" name="state" value={encodedState} />
           <input type="hidden" name="sessionId" value={sessionId ?? ""} />
           <input type="hidden" name="kind" value="likert" />
@@ -179,7 +183,11 @@ export function QuestionView({
           </div>
         </form>
       ) : (
-        <form action={submitVocationalAnswer} className="mt-8">
+        <form
+          action={submitVocationalAnswer}
+          className="mt-8"
+          suppressHydrationWarning
+        >
           <input type="hidden" name="state" value={encodedState} />
           <input type="hidden" name="sessionId" value={sessionId ?? ""} />
           <input type="hidden" name="kind" value="open" />
@@ -208,7 +216,7 @@ export function QuestionView({
           {hasGuidedOptions && currentQuestion.unsureOptions && (
             <div className="mt-4 rounded-xl border border-[#e4def5] bg-[#f7f3ff] p-4">
               <p className="text-sm font-bold text-[#7c3aed]">
-                Si elegiste que aún no estás seguro, puedes marcar una razón:
+                Si tu respuesta indica duda o falta de claridad, puedes marcar una razón:
               </p>
               <div className="mt-3 grid gap-2 sm:grid-cols-2">
                 {currentQuestion.unsureOptions.map((option) => (

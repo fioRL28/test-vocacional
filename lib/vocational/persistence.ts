@@ -110,7 +110,7 @@ export async function createTestSession() {
   }
 
   const sessionCount = await getPilotSessionCount();
-  const participantCode = `PILOT-${String(sessionCount + 1).padStart(4, "0")}`;
+  const participantCode = `P${String(sessionCount + 1).padStart(3, "0")}`;
   const session = await prisma.testSession.create({
     data: {
       participantCode,

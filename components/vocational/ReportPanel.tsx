@@ -38,6 +38,9 @@ export function ReportPanel({
         <p className="mt-1 text-sm text-[#64748B]">
           Resumen de respuestas y resultados generados.
         </p>
+        <p className="mt-2 rounded-md bg-[#f8fafc] px-3 py-2 text-xs leading-5 text-[#475569]">
+          Este reporte contiene información complementaria utilizada por el sistema para interpretar los resultados.
+        </p>
       </div>
 
       <section className="mt-5 border-t border-[#dfe5ef] pt-4">
