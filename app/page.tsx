@@ -1,365 +1,148 @@
-import Link from "next/link";
 import Image from "next/image";
-import { DelayedResultsLink } from "@/components/vocational/DelayedResultsLink";
-import { QuestionView } from "@/components/vocational/QuestionView";
-import { ResultView } from "@/components/vocational/ResultView";
+import Link from "next/link";
 import brujulaImage from "@/img/brujula-direcciones.png";
 import pensandoImage from "@/img/pensando.png";
-import { maxLikertQuestions } from "@/lib/vocational/data";
-import {
-  detectContradictions,
-  encodeAnswers,
-  getAnswerForQuestion,
-  getBestProfile,
-  getCurrentQuestionTarget,
-  getEditableQuestion,
-  getLikertAnswers,
-  getSignals,
-  processSubmittedAnswer,
-  selectNextQuestion,
-  shouldFinishTest,
-} from "@/lib/vocational/engine";
-import type { SearchParams } from "@/lib/vocational/types";
 
-export default async function Home({
-  searchParams,
-}: {
-  searchParams: Promise<SearchParams>;
-}) {
-  const resolvedSearchParams = await searchParams;
-  const rawSessionId = resolvedSearchParams.sessionId;
-  const rawView = resolvedSearchParams.view;
-  const sessionId = Array.isArray(rawSessionId) ? rawSessionId[0] : rawSessionId;
-  const view = Array.isArray(rawView) ? rawView[0] : rawView;
-  const answers = processSubmittedAnswer(resolvedSearchParams);
-  const editQuestion = getEditableQuestion(answers, resolvedSearchParams);
-  const result = getBestProfile(answers);
-  const contradictions = detectContradictions(result.averages, answers);
-  const nextQuestion = selectNextQuestion(answers);
-  const likertCount = getLikertAnswers(answers).length;
-  const canFinishAdaptively = shouldFinishTest(
-    answers,
-    result.averages,
-    result.ranked,
-    contradictions,
-  );
-  const questionTarget = getCurrentQuestionTarget(
-    answers,
-    result.averages,
-    result.ranked,
-    contradictions,
-  );
-  const isFinished =
-    !editQuestion &&
-    (!nextQuestion ||
-      likertCount >= maxLikertQuestions ||
-      canFinishAdaptively);
-  const showResults = isFinished && view === "results";
-  const currentQuestion = editQuestion ?? (isFinished ? null : nextQuestion);
-  const currentAnswer = currentQuestion
-    ? getAnswerForQuestion(answers, currentQuestion.id)
-    : undefined;
-  const questionNumber = currentAnswer?.order ?? Math.min(likertCount + 1, questionTarget);
-  const progress = isFinished
-    ? 100
-    : Math.min(100, Math.round(((questionNumber - 1) / questionTarget) * 100));
-  const encodedState = encodeAnswers(answers);
-  const resultHref = buildHref({
-    sessionId,
-    state: encodedState,
-    view: "results",
-  });
-  const lastAnswer = answers.at(-1);
-  const backToQuestionsHref = lastAnswer
-    ? buildHref({
-        sessionId,
-        state: encodedState,
-        editQuestionId: String(lastAnswer.questionId),
-      })
-    : "/";
+const benefits = [
+  {
+    title: "100% anónimo",
+    detail: "No pedimos nombres, correos ni datos personales.",
+    icon: "ID",
+  },
+  {
+    title: "Orientación inicial",
+    detail: "Obtén una guía clara sobre tus intereses y áreas afines.",
+    icon: "BR",
+  },
+  {
+    title: "Basado en intereses",
+    detail: "Preguntas diseñadas para conocer lo que te motiva y en qué destacas.",
+    icon: "IN",
+  },
+  {
+    title: "Mejores decisiones",
+    detail: "Conoce opciones de estudio y carreras que pueden ayudarte a construir tu futuro.",
+    icon: "OK",
+  },
+];
 
+export default function HomePage() {
   return (
-    <main className="min-h-screen bg-[#fbfaff] text-[#111a44]">
-      {!isFinished && currentQuestion ? (
-        <section className="mx-auto grid max-w-7xl gap-6 px-4 py-4 lg:grid-cols-[280px_1fr] lg:px-6">
-          <AppSidebar
-            active="test"
-            canOpenResults={false}
-            resultHref={resultHref}
-          />
-
-          <section className="grid gap-5">
-            <header className="rounded-2xl border border-[#f0ecfb] bg-white/70 px-6 py-5 shadow-[0_12px_35px_rgba(83,67,160,0.05)]">
-              <p className="text-2xl font-bold">¡Hola!</p>
-              <p className="mt-1 text-sm text-[#6b7394]">
-                Descubre tus talentos y encuentra tu camino ideal.
-              </p>
-            </header>
-
-            <div className="rounded-2xl border border-[#e7e3f2] bg-white p-6 shadow-[0_18px_50px_rgba(83,67,160,0.10)] md:p-8">
-              <QuestionView
-                answers={answers}
-                currentAnswer={currentAnswer}
-                currentQuestion={currentQuestion}
-                encodedState={encodedState}
-                isEditing={Boolean(editQuestion)}
-                progress={progress}
-                questionNumber={questionNumber}
-                sessionId={sessionId}
-                totalQuestions={questionTarget}
-              />
-            </div>
-
-            <PrivacyCard />
-          </section>
-        </section>
-      ) : (
-        <section className="mx-auto grid max-w-7xl gap-6 px-4 py-4 lg:grid-cols-[280px_1fr] lg:px-6">
-          <AppSidebar
-            active={showResults ? "results" : "test"}
-            canOpenResults
-            resultHref={resultHref}
-          />
-
-          <section>
-            {showResults ? (
-              <ResultView
-                answers={answers}
-                indicators={result.indicators}
-                profile={result.best}
-                ranked={result.ranked}
-                signals={getSignals(answers)}
-              />
-            ) : (
-              <CompletionView
-                backToQuestionsHref={backToQuestionsHref}
-                resultHref={resultHref}
-                totalQuestions={answers.length}
-              />
-            )}
-          </section>
-        </section>
-      )}
-    </main>
-  );
-}
-
-function AppSidebar({
-  active,
-  canOpenResults,
-  resultHref,
-}: {
-  active: "test" | "results";
-  canOpenResults: boolean;
-  resultHref: string;
-}) {
-  return (
-    <aside className="self-start rounded-2xl border border-[#ebe7fb] bg-white p-5 shadow-[0_16px_45px_rgba(83,67,160,0.08)]">
-      <div className="flex items-center gap-3">
-        <div className="grid h-14 w-14 place-items-center">
+    <main className="min-h-screen bg-[#fbfaff] px-4 py-4 text-[#111a44] sm:px-6">
+      <header className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#eee8fb] bg-white px-5 py-4 shadow-[0_14px_40px_rgba(83,67,160,0.07)]">
+        <div className="flex items-center gap-3">
           <Image
             src={brujulaImage}
-            alt="Brújula de RutaFuturo"
-            className="h-[52px] w-[52px] object-contain"
-            priority={false}
+            alt="RutaFuturo"
+            className="h-14 w-14 object-contain"
+            priority
           />
-        </div>
-        <div>
-          <p className="text-xl font-bold">RutaFuturo</p>
-          <p className="text-sm text-[#6b7394]">Test vocacional</p>
-        </div>
-      </div>
-
-      <nav className="mt-8 grid gap-3 text-sm font-semibold">
-        {active === "results" ? (
-          <span className="rounded-xl px-4 py-3 text-[#9aa2bd]">
-            Test vocacional
-          </span>
-        ) : (
-          <Link
-            href="/"
-            className="rounded-xl bg-[#f1ecff] px-4 py-3 text-[#7c3aed]"
-          >
-            Test vocacional
-          </Link>
-        )}
-        {canOpenResults ? (
-          active === "results" ? (
-            <Link
-              href={resultHref}
-              className="rounded-xl bg-[#f1ecff] px-4 py-3 text-[#7c3aed]"
-            >
-              Mis resultados
-            </Link>
-          ) : (
-            <DelayedResultsLink
-              href={resultHref}
-              className="rounded-xl px-4 py-3 text-[#273153] transition hover:bg-[#f7f3ff]"
-              disabledClassName="rounded-xl px-4 py-3 text-[#9aa2bd]"
-              loadingChildren="Preparando resultados..."
-            >
-              Mis resultados
-            </DelayedResultsLink>
-          )
-        ) : (
-          <span className="rounded-xl px-4 py-3 text-[#9aa2bd]">Mis resultados</span>
-        )}
-      </nav>
-
-      <div className="mt-5 rounded-2xl border border-[#e4def5] bg-[#f7f3ff] p-4 text-sm leading-6 text-[#394267]">
-        <p className="font-bold text-[#7c3aed]">Consejo</p>
-        <p className="mt-2">
-          Tomarte el tiempo para conocerte es el primer paso hacia tu mejor decisión profesional.
-        </p>
-      </div>
-
-      <div className="mt-5 rounded-2xl border border-[#e4def5] bg-[#fbfaff] p-4 text-center">
-        <div className="mx-auto grid h-32 w-32 place-items-center overflow-hidden rounded-full bg-[#f1ecff]">
-          <Image
-            src={pensandoImage}
-            alt="Estudiante pensando en sus intereses"
-            className="h-28 w-28 object-contain"
-            priority={false}
-          />
-        </div>
-        <p className="mt-4 text-sm font-semibold text-[#273153]">
-          Explora con calma tus intereses y fortalezas.
-        </p>
-      </div>
-    </aside>
-  );
-}
-
-function PrivacyCard() {
-  return (
-    <div className="flex items-center gap-4 rounded-2xl border border-[#e7e3f2] bg-white p-5 shadow-[0_14px_40px_rgba(83,67,160,0.07)]">
-      <div className="grid h-12 w-12 place-items-center rounded-full bg-[#f1ecff] text-xl text-[#7c3aed]">
-        ♢
-      </div>
-      <div>
-        <p className="font-bold">Tus respuestas son confidenciales</p>
-        <p className="mt-1 text-sm text-[#6b7394]">
-          Este test es solo para ayudarte a descubrir tus intereses y sugerir áreas compatibles contigo.
-        </p>
-      </div>
-    </div>
-  );
-}
-
-function CompletionView({
-  backToQuestionsHref,
-  resultHref,
-  totalQuestions,
-}: {
-  backToQuestionsHref: string;
-  resultHref: string;
-  totalQuestions: number;
-}) {
-  return (
-    <div>
-      <section className="rounded-2xl border border-[#e7e3f2] bg-white px-6 py-10 text-center shadow-[0_18px_50px_rgba(83,67,160,0.08)] md:px-10">
-        <div className="mx-auto grid h-32 w-32 place-items-center rounded-2xl bg-[#f1ecff] text-6xl text-[#7c3aed]">
-          ✓
-        </div>
-        <h1 className="mt-8 text-3xl font-bold md:text-4xl">
-          ¡Has completado todas las preguntas!
-        </h1>
-        <p className="mx-auto mt-4 max-w-2xl text-base leading-7 text-[#596386]">
-          Gracias por tomarte el tiempo para responder el test vocacional. Tus respuestas nos ayudarán
-          a identificar tus intereses, fortalezas y áreas que mejor se adaptan a ti.
-        </p>
-
-        <div className="mx-auto mt-8 grid max-w-4xl gap-4 md:grid-cols-3">
-          <CompletionStat
-            icon="✓"
-            title={`${totalQuestions} de ${totalQuestions}`}
-            subtitle="Respuestas registradas"
-          />
-          <CompletionStat
-            icon="○"
-            title="Listo"
-            subtitle="Análisis preparado"
-          />
-          <CompletionStat
-            icon="◎"
-            title="¡Excelente!"
-            subtitle="Completaste el test"
-          />
-        </div>
-
-        <div className="mx-auto mt-8 flex max-w-3xl items-center gap-5 rounded-2xl border border-[#d9cef7] bg-[#f7f3ff] p-5 text-left">
-          <div className="grid h-14 w-14 shrink-0 place-items-center rounded-full bg-[#d9c8ff] text-2xl text-[#7c3aed]">
-            ✦
-          </div>
           <div>
-            <p className="font-bold">Estamos analizando tus respuestas</p>
-            <p className="mt-2 text-sm leading-6 text-[#394267]">
-              Esto puede tardar unos segundos. Pronto podrás ver tus resultados personalizados.
-            </p>
+            <p className="text-2xl font-black">RutaFuturo</p>
+            <p className="text-sm font-medium text-[#667096]">Test vocacional anónimo</p>
           </div>
         </div>
+        <Link
+          href="/ingresar"
+          className="rounded-xl border border-[#d8cafa] px-5 py-3 text-sm font-black text-[#7c3aed] transition hover:bg-[#f4efff]"
+        >
+          Acceso
+        </Link>
+      </header>
 
-        <div className="mx-auto mt-8 flex max-w-4xl flex-wrap items-center justify-between gap-4">
-          <Link
-            href={backToQuestionsHref}
-            className="rounded-xl border border-[#d7d2e7] bg-white px-6 py-3 font-bold text-[#667096] transition hover:border-[#8b5cf6] hover:bg-[#f6f1ff]"
-          >
-            ← Volver a preguntas
-          </Link>
-          <DelayedResultsLink
-            href={resultHref}
-            className="rounded-xl bg-[#7c3aed] px-6 py-3 font-bold text-white transition hover:bg-[#6d28d9]"
-            disabledClassName="rounded-xl bg-[#e7defb] px-6 py-3 font-bold text-[#b9a6e8]"
-            loadingChildren="Preparando resultados..."
-          >
-            Ver mis resultados →
-          </DelayedResultsLink>
+      <section className="mx-auto mt-4 grid max-w-7xl items-center gap-8 rounded-2xl border border-[#eee8fb] bg-white/70 px-6 py-10 shadow-[0_18px_55px_rgba(83,67,160,0.06)] lg:grid-cols-[0.9fr_1fr] lg:px-24 lg:py-14">
+        <div>
+          <p className="text-lg font-black text-[#7c3aed]">¡Bienvenido a RutaFuturo!</p>
+          <h1 className="mt-5 max-w-2xl text-4xl font-black leading-tight sm:text-5xl">
+            Descubre tus intereses y encuentra tu camino
+          </h1>
+          <p className="mt-5 max-w-xl text-base leading-7 text-[#394267]">
+            Nuestro test vocacional te ayuda a identificar intereses, fortalezas y áreas
+            de desarrollo para tomar mejores decisiones.
+          </p>
+
+          <div className="mt-6 rounded-2xl border border-[#ddd3f5] bg-[#fbf8ff] p-5">
+            <div className="flex gap-4">
+              <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-[#7c3aed] text-sm font-black text-white">
+                ID
+              </div>
+              <div>
+                <p className="font-black text-[#7c3aed]">100% anónimo y seguro</p>
+                <p className="mt-2 text-sm leading-6 text-[#4f5a7a]">
+                  El test no solicita nombres ni correos. Tus respuestas se gestionan mediante
+                  un identificador anónimo.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-6 flex flex-wrap gap-3">
+            <Link
+              href="/test"
+              className="inline-flex min-h-14 min-w-64 items-center justify-center rounded-xl bg-[#7c3aed] px-8 text-lg font-black text-white shadow-[0_16px_35px_rgba(124,58,237,0.24)] transition hover:bg-[#6d28d9]"
+            >
+              Iniciar test anónimo
+            </Link>
+          </div>
+
+          <p className="mt-4 text-sm font-medium text-[#667096]">
+            Sin registros. Sin datos personales. Solo tú y tus respuestas.
+          </p>
         </div>
 
-        <p className="mx-auto mt-8 max-w-4xl text-left text-sm text-[#596386]">
-          Tus respuestas son confidenciales y se utilizan únicamente para generar tus resultados.
-        </p>
+        <div className="grid place-items-center">
+          <div className="relative grid aspect-[1.15] w-full max-w-xl place-items-center rounded-full bg-[#f1eaff]">
+            <Image
+              src={pensandoImage}
+              alt="Estudiante explorando sus intereses"
+              className="w-[78%] object-contain"
+              priority
+            />
+            <span className="absolute left-6 top-12 rounded-2xl bg-white px-4 py-3 text-sm font-black text-[#7c3aed] shadow-sm">
+              Intereses
+            </span>
+            <span className="absolute right-4 top-24 rounded-2xl bg-white px-4 py-3 text-sm font-black text-[#21a7d8] shadow-sm">
+              Fortalezas
+            </span>
+            <span className="absolute bottom-14 left-10 rounded-2xl bg-white px-4 py-3 text-sm font-black text-[#27b889] shadow-sm">
+              Futuro
+            </span>
+          </div>
+        </div>
       </section>
-    </div>
+
+      <section className="mx-auto mt-4 grid max-w-7xl gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {benefits.map((benefit) => (
+          <article
+            key={benefit.title}
+            className="flex min-h-40 gap-5 rounded-2xl border border-[#eee8fb] bg-white p-6 shadow-[0_14px_40px_rgba(83,67,160,0.06)]"
+          >
+            <div className="grid h-16 w-16 shrink-0 place-items-center rounded-full bg-[#efe9ff] text-sm font-black text-[#7c3aed]">
+              {benefit.icon}
+            </div>
+            <div>
+              <h2 className="text-lg font-black text-[#7c3aed]">{benefit.title}</h2>
+              <p className="mt-3 text-sm leading-6 text-[#4f5a7a]">{benefit.detail}</p>
+            </div>
+          </article>
+        ))}
+      </section>
+
+      <section className="mx-auto mt-4 flex max-w-7xl flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#eee8fb] bg-white px-6 py-5 shadow-[0_14px_40px_rgba(83,67,160,0.06)]">
+        <div>
+          <p className="text-lg font-black text-[#7c3aed]">Administración y seguridad</p>
+          <p className="mt-2 max-w-4xl text-sm leading-6 text-[#4f5a7a]">
+            Solo el administrador accede al panel de gestión y entrenamiento del modelo.
+            Los resultados anónimos se utilizan para mejorar la experiencia y la precisión del sistema.
+          </p>
+        </div>
+        <Link
+          href="/ingresar"
+          className="rounded-xl border border-[#d8cafa] px-6 py-3 text-sm font-black text-[#7c3aed] transition hover:bg-[#f4efff]"
+        >
+          Acceso
+        </Link>
+      </section>
+    </main>
   );
-}
-
-function CompletionStat({
-  icon,
-  subtitle,
-  title,
-}: {
-  icon: string;
-  subtitle: string;
-  title: string;
-}) {
-  return (
-    <div className="flex min-h-24 items-center gap-4 rounded-2xl border border-[#e7e3f2] bg-white p-5 text-left">
-      <div className="grid h-14 w-14 shrink-0 place-items-center rounded-full bg-[#f1ecff] text-2xl font-bold text-[#7c3aed]">
-        {icon}
-      </div>
-      <div>
-        <p className="text-xl font-bold">{title}</p>
-        <p className="mt-1 text-sm text-[#596386]">{subtitle}</p>
-      </div>
-    </div>
-  );
-}
-
-function buildHref(params: {
-  editQuestionId?: string;
-  sessionId?: string;
-  state?: string;
-  view?: string;
-}) {
-  const searchParams = new URLSearchParams();
-
-  if (params.sessionId) searchParams.set("sessionId", params.sessionId);
-  if (params.state) searchParams.set("state", params.state);
-  if (params.editQuestionId) searchParams.set("editQuestionId", params.editQuestionId);
-  if (params.view) searchParams.set("view", params.view);
-
-  const query = searchParams.toString();
-
-  return query ? `/?${query}` : "/";
 }

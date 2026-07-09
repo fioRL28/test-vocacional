@@ -1,4 +1,4 @@
-import {
+﻿import {
   adaptiveThemeBlocks,
   bigFiveDimensions,
   contextDimensions,
@@ -8,14 +8,14 @@ import {
   vocationalSubroutes,
 } from "./data";
 import {
-  calculateDifferentiationScore,
-  detectContradictions,
-  getAdaptiveClosingDecision,
-  getAverages,
-  getBestProfile,
-  getLikertAnswers,
-  getOpenAnswers,
-  getTopDimensions,
+  calcularPuntajeDiferenciacion,
+  detectarContradicciones,
+  obtenerDecisionCierreAdaptativo,
+  obtenerPromedios,
+  obtenerMejorPerfil,
+  obtenerRespuestasLikert,
+  obtenerRespuestasAbiertas,
+  obtenerDimensionesPrincipales,
 } from "./engine";
 import type {
   Answer,
@@ -58,11 +58,11 @@ const TRIGGER_OPTION_KEYWORDS: Record<NonNullable<Question["trigger"]>, string[]
   contrast: ["ambas", "probar", "revisar", "diseñar", "escuchar", "convencer", "coordinar"],
 };
 
-function clampScore(score: number) {
+function limitarPuntaje(score: number) {
   return Math.max(0, Math.min(100, Math.round(score)));
 }
 
-function interpretQuestionCoherence(score: number, issues: AuditIssue[] = []): AuditInterpretation {
+function interpretarCoherenciaPregunta(score: number, issues: AuditIssue[] = []): AuditInterpretation {
   if (score >= 95) {
     return {
       status: "ok",
@@ -83,7 +83,7 @@ function interpretQuestionCoherence(score: number, issues: AuditIssue[] = []): A
   };
 }
 
-function interpretRedundancy(redundancyPercent: number): AuditInterpretation {
+function interpretarRedundancia(redundancyPercent: number): AuditInterpretation {
   if (redundancyPercent < 15) {
     return {
       status: "ok",
@@ -104,7 +104,7 @@ function interpretRedundancy(redundancyPercent: number): AuditInterpretation {
   };
 }
 
-function interpretProfileAbsorption(
+function interpretarAbsorcionPerfil(
   score: number,
   profileId: string,
   riskFactors: string[],
@@ -135,7 +135,7 @@ function interpretProfileAbsorption(
   };
 }
 
-function interpretProfileSignalConsistency(
+function interpretarConsistenciaSenalesPerfil(
   score: number,
   issues: AuditIssue[] = [],
 ): AuditInterpretation {
@@ -161,7 +161,7 @@ function interpretProfileSignalConsistency(
   };
 }
 
-function interpretFlowEfficiency(
+function interpretarEficienciaFlujo(
   score: number,
   questionCount: number,
   profileClarity: number,
@@ -193,7 +193,7 @@ function interpretFlowEfficiency(
   };
 }
 
-function normalizeText(value: string) {
+function normalizarTexto(value: string) {
   return value
     .toLowerCase()
     .normalize("NFD")
@@ -203,7 +203,7 @@ function normalizeText(value: string) {
     .trim();
 }
 
-function tokenize(value: string) {
+function tokenizar(value: string) {
   const stopWords = new Set([
     "a",
     "al",
@@ -230,12 +230,12 @@ function tokenize(value: string) {
     "y",
   ]);
 
-  return normalizeText(value)
+  return normalizarTexto(value)
     .split(" ")
     .filter((token) => token.length > 2 && !stopWords.has(token));
 }
 
-function jaccardSimilarity(left: string[], right: string[]) {
+function calcularSimilitudJaccard(left: string[], right: string[]) {
   const leftSet = new Set(left);
   const rightSet = new Set(right);
   const union = new Set([...leftSet, ...rightSet]);
@@ -244,7 +244,7 @@ function jaccardSimilarity(left: string[], right: string[]) {
   return union.size ? intersection.length / union.size : 0;
 }
 
-function semanticFocusMatchesDimension(question: Question) {
+function focoSemanticoCoincideConDimension(question: Question) {
   if (!question.dimension) return true;
 
   const keywords = DIMENSION_FOCUS_KEYWORDS[question.dimension];
@@ -253,7 +253,7 @@ function semanticFocusMatchesDimension(question: Question) {
   return keywords.some((keyword) => semanticFocusText.includes(keyword));
 }
 
-function getQuestionThemeBlockIds(question: Question) {
+function obtenerIdsBloquesTematicosPregunta(question: Question) {
   return adaptiveThemeBlocks
     .filter((block) => {
       const focus = question.semanticFocus ?? [];
@@ -267,7 +267,7 @@ function getQuestionThemeBlockIds(question: Question) {
     .map((block) => block.id);
 }
 
-function getExpectedModelForDimension(dimension: Dimension | undefined) {
+function obtenerModeloEsperadoPorDimension(dimension: Dimension | undefined) {
   if (!dimension) return undefined;
   if (riasecDimensions.includes(dimension)) return "RIASEC";
   if (bigFiveDimensions.includes(dimension)) return "Big Five";
@@ -275,7 +275,7 @@ function getExpectedModelForDimension(dimension: Dimension | undefined) {
   return undefined;
 }
 
-export function getQuestionCoherenceAudit(question: Question): QuestionCoherenceAudit {
+export function obtenerAuditoriaCoherenciaPregunta(question: Question): QuestionCoherenceAudit {
   const issues: AuditIssue[] = [];
   let score = 100;
 
@@ -289,7 +289,7 @@ export function getQuestionCoherenceAudit(question: Question): QuestionCoherence
     });
   }
 
-  const expectedModel = getExpectedModelForDimension(question.dimension);
+  const expectedModel = obtenerModeloEsperadoPorDimension(question.dimension);
 
   if (question.model && expectedModel && question.model !== expectedModel) {
     score -= 18;
@@ -301,7 +301,7 @@ export function getQuestionCoherenceAudit(question: Question): QuestionCoherence
     });
   }
 
-  if (question.kind === "likert" && question.dimension && !semanticFocusMatchesDimension(question)) {
+  if (question.kind === "likert" && question.dimension && !focoSemanticoCoincideConDimension(question)) {
     score -= 14;
     issues.push({
       code: "semantic_focus_dimension_gap",
@@ -324,9 +324,9 @@ export function getQuestionCoherenceAudit(question: Question): QuestionCoherence
 
     if (question.guidedOptions?.length && question.trigger) {
       const expectedKeywords = TRIGGER_OPTION_KEYWORDS[question.trigger];
-      const optionText = normalizeText(question.guidedOptions.join(" "));
+      const optionText = normalizarTexto(question.guidedOptions.join(" "));
       const matchingKeywords = expectedKeywords.filter((keyword) =>
-        optionText.includes(normalizeText(keyword)),
+        optionText.includes(normalizarTexto(keyword)),
       );
       const minimumMatches = question.trigger === "contrast" ? 1 : 2;
 
@@ -342,8 +342,8 @@ export function getQuestionCoherenceAudit(question: Question): QuestionCoherence
     }
   }
 
-  const finalScore = clampScore(score);
-  const interpretation = interpretQuestionCoherence(finalScore, issues);
+  const finalScore = limitarPuntaje(score);
+  const interpretation = interpretarCoherenciaPregunta(finalScore, issues);
 
   return {
     questionId: question.id,
@@ -352,17 +352,17 @@ export function getQuestionCoherenceAudit(question: Question): QuestionCoherence
     reason: interpretation.reason,
     dimension: question.dimension,
     trigger: question.trigger,
-    adaptiveThemeBlockIds: getQuestionThemeBlockIds(question),
+    adaptiveThemeBlockIds: obtenerIdsBloquesTematicosPregunta(question),
     issues,
   };
 }
 
-export function getQuestionCoherenceReport() {
-  const questionAudits = questions.map(getQuestionCoherenceAudit);
+export function obtenerReporteCoherenciaPreguntas() {
+  const questionAudits = questions.map(obtenerAuditoriaCoherenciaPregunta);
   const score =
     questionAudits.reduce((total, item) => total + item.score, 0) / questionAudits.length;
-  const finalScore = clampScore(score);
-  const interpretation = interpretQuestionCoherence(
+  const finalScore = limitarPuntaje(score);
+  const interpretation = interpretarCoherenciaPregunta(
     finalScore,
     questionAudits.flatMap((question) => question.issues),
   );
@@ -375,7 +375,7 @@ export function getQuestionCoherenceReport() {
   };
 }
 
-export function getRedundancyAudit(): RedundancyAudit {
+export function obtenerAuditoriaRedundancia(): RedundancyAudit {
   const likertQuestions = questions.filter(
     (question) => question.kind === "likert" && question.dimension,
   );
@@ -383,7 +383,7 @@ export function getRedundancyAudit(): RedundancyAudit {
     likertQuestions.slice(index + 1).flatMap((candidate) => {
       if (question.dimension !== candidate.dimension) return [];
 
-      const textSimilarity = jaccardSimilarity(tokenize(question.text), tokenize(candidate.text));
+      const textSimilarity = calcularSimilitudJaccard(tokenizar(question.text), tokenizar(candidate.text));
       const sharedSemanticFocus = (question.semanticFocus ?? []).filter((focus) =>
         (candidate.semanticFocus ?? []).includes(focus),
       );
@@ -409,17 +409,17 @@ export function getRedundancyAudit(): RedundancyAudit {
     0,
   );
   const redundancyPercent = maxSimilarity * 100;
-  const interpretation = interpretRedundancy(redundancyPercent);
+  const interpretation = interpretarRedundancia(redundancyPercent);
 
   return {
-    score: clampScore(redundancyPercent),
+    score: limitarPuntaje(redundancyPercent),
     status: interpretation.status,
     reason: interpretation.reason,
     pairs: pairs.sort((a, b) => b.similarity - a.similarity),
   };
 }
 
-function getProfileStaticAbsorptionRisk(profile: Profile) {
+function obtenerRiesgoAbsorcionEstaticaPerfil(profile: Profile) {
   const weightedDimensions = Object.entries(profile.dimensions);
   const totalWeight = weightedDimensions.reduce(
     (total, [, weight]) => total + Math.abs(Number(weight)),
@@ -453,10 +453,10 @@ function getProfileStaticAbsorptionRisk(profile: Profile) {
   return riskFactors;
 }
 
-export function getProfileAbsorptionAudit(answerSets: Answer[][] = []): ProfileAbsorptionAudit[] {
+export function obtenerAuditoriaAbsorcionPerfil(answerSets: Answer[][] = []): ProfileAbsorptionAudit[] {
   const predictions = answerSets.map((answers) => {
-    const result = getBestProfile(answers);
-    const openAnswers = getOpenAnswers(answers);
+    const result = obtenerMejorPerfil(answers);
+    const openAnswers = obtenerRespuestasAbiertas(answers);
     const careerReferences = openAnswers.flatMap((answer) =>
       answer.careerReference ? [answer.careerReference] : [],
     );
@@ -472,7 +472,7 @@ export function getProfileAbsorptionAudit(answerSets: Answer[][] = []): ProfileA
 
   return profiles.map((profile) => {
     const profilePredictions = predictions.filter((prediction) => prediction.profileId === profile.id);
-    const staticRiskFactors = getProfileStaticAbsorptionRisk(profile);
+    const staticRiskFactors = obtenerRiesgoAbsorcionEstaticaPerfil(profile);
     const mismatchCount = profilePredictions.filter((prediction) => prediction.hasObservedMismatch).length;
     const careerReferences = Array.from(
       new Set(profilePredictions.flatMap((prediction) => prediction.careerReferences)),
@@ -481,8 +481,8 @@ export function getProfileAbsorptionAudit(answerSets: Answer[][] = []): ProfileA
     const staticRisk = staticRiskFactors.length * 12;
     const observedRisk = predictionShare * 55 + mismatchCount * 12 + careerReferences.length * 6;
 
-    const score = clampScore(staticRisk + observedRisk);
-    const interpretation = interpretProfileAbsorption(
+    const score = limitarPuntaje(staticRisk + observedRisk);
+    const interpretation = interpretarAbsorcionPerfil(
       score,
       profile.id,
       staticRiskFactors,
@@ -502,13 +502,13 @@ export function getProfileAbsorptionAudit(answerSets: Answer[][] = []): ProfileA
   }).sort((a, b) => b.score - a.score);
 }
 
-export function getProfileSignalConsistencyAudit(
+export function obtenerAuditoriaConsistenciaSenalesPerfil(
   answers: Answer[],
 ): ProfileSignalConsistencyAudit {
-  const result = getBestProfile(answers);
-  const averages = getAverages(answers);
-  const differentiation = calculateDifferentiationScore(averages);
-  const topRiasecDimensions = getTopDimensions(averages)
+  const result = obtenerMejorPerfil(answers);
+  const averages = obtenerPromedios(answers);
+  const differentiation = calcularPuntajeDiferenciacion(averages);
+  const topRiasecDimensions = obtenerDimensionesPrincipales(averages)
     .filter((item) => riasecDimensions.includes(item.dimension))
     .slice(0, 3)
     .map((item) => item.dimension);
@@ -523,7 +523,7 @@ export function getProfileSignalConsistencyAudit(
     issues.push({
       code: "main_profile_without_top_signal_alignment",
       severity: "high",
-      message: "El perfil principal no comparte dimensiones con las tres señales RIASEC mas altas.",
+      message: "El perfil principal no comparte dimensiones con las tres señales RIASEC más altas.",
       targetId: result.best.id,
     });
   } else if (alignedDimensions.length < result.best.coreRiasec.length) {
@@ -531,7 +531,7 @@ export function getProfileSignalConsistencyAudit(
     issues.push({
       code: "partial_core_signal_alignment",
       severity: "medium",
-      message: "Solo una parte del nucleo RIASEC aparece entre las señales destacadas.",
+      message: "Solo una parte del núcleo RIASEC aparece entre las señales destacadas.",
       targetId: result.best.id,
     });
   }
@@ -558,8 +558,8 @@ export function getProfileSignalConsistencyAudit(
     });
   }
 
-  const finalScore = clampScore(score);
-  const interpretation = interpretProfileSignalConsistency(finalScore, issues);
+  const finalScore = limitarPuntaje(score);
+  const interpretation = interpretarConsistenciaSenalesPerfil(finalScore, issues);
 
   return {
     score: finalScore,
@@ -575,19 +575,19 @@ export function getProfileSignalConsistencyAudit(
   };
 }
 
-export function getFlowEfficiencyAudit(answers: Answer[]): FlowEfficiencyAudit {
-  const result = getBestProfile(answers);
-  const averages = getAverages(answers);
-  const differentiation = calculateDifferentiationScore(averages);
-  const contradictions = detectContradictions(averages, answers);
-  const closingDecision = getAdaptiveClosingDecision(
+export function obtenerAuditoriaEficienciaFlujo(answers: Answer[]): FlowEfficiencyAudit {
+  const result = obtenerMejorPerfil(answers);
+  const averages = obtenerPromedios(answers);
+  const differentiation = calcularPuntajeDiferenciacion(averages);
+  const contradictions = detectarContradicciones(averages, answers);
+  const closingDecision = obtenerDecisionCierreAdaptativo(
     answers,
     averages,
     result.ranked,
     contradictions,
   );
   const questionCount = answers.length;
-  const likertCount = getLikertAnswers(answers).length;
+  const likertCount = obtenerRespuestasLikert(answers).length;
   const profileClarity = result.indicators.profileClarity;
   const clarityPerQuestion = questionCount ? profileClarity / questionCount : 0;
   const expectedQuestionCount = 20;
@@ -608,8 +608,8 @@ export function getFlowEfficiencyAudit(answers: Answer[]): FlowEfficiencyAudit {
     });
   }
 
-  const score = clampScore(efficiency);
-  const interpretation = interpretFlowEfficiency(score, questionCount, profileClarity);
+  const score = limitarPuntaje(efficiency);
+  const interpretation = interpretarEficienciaFlujo(score, questionCount, profileClarity);
 
   return {
     score,
@@ -626,13 +626,13 @@ export function getFlowEfficiencyAudit(answers: Answer[]): FlowEfficiencyAudit {
   };
 }
 
-function averageScore(values: number[]) {
+function promediarPuntajes(values: number[]) {
   if (!values.length) return 100;
 
-  return clampScore(values.reduce((total, value) => total + value, 0) / values.length);
+  return limitarPuntaje(values.reduce((total, value) => total + value, 0) / values.length);
 }
 
-function aggregateInterpretation<T extends { status: string; reason: string }>(
+function agregarInterpretacion<T extends { status: string; reason: string }>(
   items: T[],
   fallback: AuditInterpretation,
 ): AuditInterpretation {
@@ -656,25 +656,25 @@ function aggregateInterpretation<T extends { status: string; reason: string }>(
   return fallback;
 }
 
-export function getInternalInstrumentAuditReport(
+export function obtenerReporteAuditoriaInstrumentoInterno(
   answerSets: Answer[][] = [],
 ): InternalInstrumentAuditReport {
-  const questionCoherence = getQuestionCoherenceReport();
-  const redundancy = getRedundancyAudit();
-  const profileAbsorption = getProfileAbsorptionAudit(answerSets);
-  const profileSignalConsistencySessions = answerSets.map(getProfileSignalConsistencyAudit);
-  const flowEfficiencySessions = answerSets.map(getFlowEfficiencyAudit);
-  const profileSignalConsistencyScore = averageScore(
+  const questionCoherence = obtenerReporteCoherenciaPreguntas();
+  const redundancy = obtenerAuditoriaRedundancia();
+  const profileAbsorption = obtenerAuditoriaAbsorcionPerfil(answerSets);
+  const profileSignalConsistencySessions = answerSets.map(obtenerAuditoriaConsistenciaSenalesPerfil);
+  const flowEfficiencySessions = answerSets.map(obtenerAuditoriaEficienciaFlujo);
+  const profileSignalConsistencyScore = promediarPuntajes(
     profileSignalConsistencySessions.map((session) => session.score),
   );
-  const profileSignalConsistencyInterpretation = aggregateInterpretation(
+  const profileSignalConsistencyInterpretation = agregarInterpretacion(
     profileSignalConsistencySessions,
-    interpretProfileSignalConsistency(profileSignalConsistencyScore),
+    interpretarConsistenciaSenalesPerfil(profileSignalConsistencyScore),
   );
-  const flowEfficiencyScore = averageScore(flowEfficiencySessions.map((session) => session.score));
-  const flowEfficiencyInterpretation = aggregateInterpretation(
+  const flowEfficiencyScore = promediarPuntajes(flowEfficiencySessions.map((session) => session.score));
+  const flowEfficiencyInterpretation = agregarInterpretacion(
     flowEfficiencySessions,
-    interpretFlowEfficiency(flowEfficiencyScore, 0, flowEfficiencyScore),
+    interpretarEficienciaFlujo(flowEfficiencyScore, 0, flowEfficiencyScore),
   );
   const issues = [
     ...questionCoherence.questions.flatMap((question) => question.issues),
@@ -714,3 +714,4 @@ export function getInternalInstrumentAuditReport(
     issues,
   };
 }
+

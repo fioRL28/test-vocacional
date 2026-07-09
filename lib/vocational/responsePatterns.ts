@@ -1,4 +1,4 @@
-export type ResponsePattern = {
+﻿export type ResponsePattern = {
   id: string;
   label: string;
   category:
@@ -33,6 +33,22 @@ export type SemanticFocusPattern = {
   phrases: string[];
 };
 
+type FreeVocationalPattern = {
+  id: string;
+  semanticFocus: string[];
+  suggestedRoutes: string[];
+  keywords: string[];
+  phrases: string[];
+};
+
+export type AnalisisRespuestaLibreVocacional = {
+  matchedPatterns: string[];
+  semanticFocus: string[];
+  suggestedRoutes: string[];
+  clarity: "alta" | "media" | "baja";
+  usarParaRanking: boolean;
+};
+
 export const semanticFocusPatterns: SemanticFocusPattern[] = [
   {
     id: "visual-spatial-design",
@@ -56,13 +72,12 @@ export const semanticFocusPatterns: SemanticFocusPattern[] = [
       "maqueta",
       "maquetas",
       "interiores",
-      "visual",
       "forma",
       "formas",
     ],
     phrases: [
-      "organizacion visual",
-      "organización visual",
+      "organizacion espacial",
+      "organización espacial",
       "diseno de espacios",
       "diseño de espacios",
       "diseno espacial",
@@ -70,6 +85,212 @@ export const semanticFocusPatterns: SemanticFocusPattern[] = [
       "experiencia de personas",
       "como se usa un espacio",
       "como se sienten las personas en un espacio",
+    ],
+  },
+  {
+    id: "graphic-visual-communication",
+    semanticFocus: [
+      "graphic-visual-communication",
+      "applied-design",
+      "communication-confidence",
+    ],
+    keywords: [
+      "marca",
+      "marcas",
+      "grafico",
+      "gráfico",
+      "visuales",
+      "branding",
+      "contenido",
+      "comunicacion",
+      "comunicación",
+    ],
+    phrases: [
+      "piezas visuales",
+      "contenido grafico",
+      "contenido gráfico",
+      "comunicacion visual",
+      "comunicación visual",
+      "mensajes graficos",
+      "mensajes gráficos",
+    ],
+  },
+];
+
+const freeVocationalPatterns: FreeVocationalPattern[] = [
+  {
+    id: "social-community-service",
+    semanticFocus: [
+      "collaborative-help",
+      "community-environment",
+      "interpersonal-care",
+      "emotional-support",
+    ],
+    suggestedRoutes: [
+      "social-work-community-development",
+      "salud-publica",
+      "psicologia-human-support",
+    ],
+    keywords: [
+      "voluntariado",
+      "comunidad",
+      "comunitario",
+      "comunitaria",
+      "social",
+      "ayuda",
+      "apoyo",
+    ],
+    phrases: [
+      "servicio social",
+      "ayuda social",
+      "trabajo social",
+      "ayudar a la comunidad",
+      "apoyar a comunidades",
+      "ayudar personas",
+    ],
+  },
+  {
+    id: "territory-field",
+    semanticFocus: [
+      "community-environment",
+      "field-observation",
+      "territorial-analysis",
+    ],
+    suggestedRoutes: [
+      "natural-resources-territory",
+      "environmental-management",
+      "social-work-community-development",
+    ],
+    keywords: [
+      "viajar",
+      "campo",
+      "territorio",
+      "territorial",
+      "rural",
+      "rurales",
+      "zonas",
+    ],
+    phrases: [
+      "zonas rurales",
+      "trabajo de campo",
+      "salir a campo",
+      "conocer lugares",
+      "trabajar en territorio",
+    ],
+  },
+  {
+    id: "teaching-guidance",
+    semanticFocus: [
+      "teaching-guidance",
+      "communication-confidence",
+      "collaborative-help",
+    ],
+    suggestedRoutes: ["educacion", "orientacion-vocacional"],
+    keywords: [
+      "ensenar",
+      "enseñar",
+      "explicar",
+      "educar",
+      "orientar",
+      "docencia",
+      "profesor",
+      "profesora",
+    ],
+    phrases: [
+      "dar clases",
+      "ayudar a aprender",
+      "orientar personas",
+      "explicar temas",
+    ],
+  },
+  {
+    id: "health-care",
+    semanticFocus: [
+      "interpersonal-care",
+      "evidence-based-reasoning",
+      "teaching-guidance",
+      "emotional-support",
+    ],
+    suggestedRoutes: [
+      "salud-publica",
+      "enfermeria",
+      "nutricion",
+      "psicologia-human-support",
+    ],
+    keywords: [
+      "salud",
+      "bienestar",
+      "prevencion",
+      "prevención",
+      "cuidar",
+      "pacientes",
+      "enfermeria",
+      "enfermería",
+      "nutricion",
+      "nutrición",
+    ],
+    phrases: [
+      "cuidar pacientes",
+      "ayudar pacientes",
+      "promover salud",
+      "salud publica",
+      "salud pública",
+    ],
+  },
+  {
+    id: "software-technology",
+    semanticFocus: [
+      "abstract-reasoning",
+      "technical-manipulation",
+      "practical-testing",
+    ],
+    suggestedRoutes: ["ingenieria-sistemas", "software"],
+    keywords: [
+      "programar",
+      "software",
+      "sistemas",
+      "tecnologia",
+      "tecnología",
+      "aplicaciones",
+      "codigo",
+      "código",
+    ],
+    phrases: [
+      "crear aplicaciones",
+      "ingenieria de sistemas",
+      "ingeniería de sistemas",
+      "desarrollo de software",
+    ],
+  },
+  {
+    id: "visual-design",
+    semanticFocus: [
+      "graphic-visual-communication",
+      "visual-spatial-creativity",
+      "applied-design",
+      "communication-confidence",
+    ],
+    suggestedRoutes: ["diseno-grafico", "comunicacion-audiovisual"],
+    keywords: [
+      "disenar",
+      "diseñar",
+      "diseno",
+      "diseño",
+      "dibujo",
+      "visual",
+      "visuales",
+      "logos",
+      "logo",
+      "grafico",
+      "gráfico",
+    ],
+    phrases: [
+      "diseno grafico",
+      "diseño gráfico",
+      "comunicacion audiovisual",
+      "comunicación audiovisual",
+      "crear logos",
+      "piezas visuales",
     ],
   },
 ];
@@ -181,10 +402,35 @@ export const responsePatterns: ResponsePattern[] = [
   },
   {
     id: "economic-concern",
-    label: "Preocupacion economica",
+    label: "Preocupación económica o laboral",
     category: "economic_concern",
-    keywords: ["rentable", "estabilidad"],
-    phrases: ["conseguir trabajo", "ganar dinero", "seguro laboral", "trabajo seguro", "no conseguir empleo", "salida laboral"],
+    keywords: [
+      "rentable",
+      "estabilidad",
+      "empleabilidad",
+      "sueldo",
+      "salario",
+      "dinero",
+      "trabajo",
+      "laboral",
+    ],
+    phrases: [
+      "conseguir trabajo",
+      "ganar dinero",
+      "seguro laboral",
+      "trabajo seguro",
+      "no conseguir empleo",
+      "salida laboral",
+      "oportunidades laborales",
+      "mas oportunidades laborales",
+      "más oportunidades laborales",
+      "oportunidades de trabajo",
+      "mayor salida laboral",
+      "mejor salida laboral",
+      "que tenga trabajo",
+      "que tenga mas trabajo",
+      "que tenga más trabajo",
+    ],
     clarityImpact: -2,
     reliabilityImpact: 1,
   },
@@ -236,8 +482,8 @@ export const responsePatterns: ResponsePattern[] = [
   },
 ];
 
-export function analyzeNarrativeText(text: string) {
-  const normalized = normalizeText(text);
+export function analizarTextoNarrativo(text: string) {
+  const normalized = normalizarTexto(text);
 
   if (!normalized) {
     return {
@@ -250,15 +496,15 @@ export function analyzeNarrativeText(text: string) {
   }
 
   const matchedPatterns = responsePatterns.filter((pattern) => {
-    const values = [...pattern.keywords, ...pattern.phrases].map(normalizeText);
+    const values = [...pattern.keywords, ...pattern.phrases].map(normalizarTexto);
 
     return values.some((value) => value && normalized.includes(value));
   });
 
   return {
     matchedPatterns: matchedPatterns.map((pattern) => pattern.id),
-    categories: unique(matchedPatterns.map((pattern) => pattern.category)),
-    suggestedDimensions: unique(
+    categories: unicos(matchedPatterns.map((pattern) => pattern.category)),
+    suggestedDimensions: unicos(
       matchedPatterns.flatMap((pattern) => pattern.suggestedDimensions ?? []),
     ),
     reliabilityImpact: matchedPatterns.reduce(
@@ -272,8 +518,8 @@ export function analyzeNarrativeText(text: string) {
   };
 }
 
-export function analyzeSemanticFocusText(text: string) {
-  const normalized = normalizeText(text);
+export function analizarTextoFocoSemantico(text: string) {
+  const normalized = normalizarTexto(text);
 
   if (!normalized) {
     return {
@@ -283,20 +529,65 @@ export function analyzeSemanticFocusText(text: string) {
   }
 
   const matchedPatterns = semanticFocusPatterns.filter((pattern) => {
-    const values = [...pattern.keywords, ...pattern.phrases].map(normalizeText);
+    const values = [...pattern.keywords, ...pattern.phrases].map(normalizarTexto);
 
     return values.some((value) => value && normalized.includes(value));
   });
 
   return {
     matchedPatterns: matchedPatterns.map((pattern) => pattern.id),
-    semanticFocus: unique(
+    semanticFocus: unicos(
       matchedPatterns.flatMap((pattern) => pattern.semanticFocus),
     ),
   };
 }
 
-function normalizeText(text: string) {
+export function analizarRespuestaLibreVocacional(
+  text: string,
+): AnalisisRespuestaLibreVocacional {
+  const normalized = normalizarTexto(text);
+
+  if (!normalized || normalized.split(/\s+/).filter(Boolean).length < 2) {
+    return {
+      matchedPatterns: [],
+      semanticFocus: [],
+      suggestedRoutes: [],
+      clarity: "baja",
+      usarParaRanking: false,
+    };
+  }
+
+  const matchedPatterns = freeVocationalPatterns.filter((pattern) => {
+    const values = [...pattern.keywords, ...pattern.phrases].map(normalizarTexto);
+
+    return values.some((value) => value && normalized.includes(value));
+  });
+  const semanticFocus = unicos(
+    matchedPatterns.flatMap((pattern) => pattern.semanticFocus),
+  );
+  const suggestedRoutes = unicos(
+    matchedPatterns.flatMap((pattern) => pattern.suggestedRoutes),
+  );
+  const meaningfulWordCount = normalized
+    .split(/\s+/)
+    .filter((word) => word.length > 2).length;
+  const clarity =
+    matchedPatterns.length >= 2 || (matchedPatterns.length === 1 && meaningfulWordCount >= 6)
+      ? "alta"
+      : matchedPatterns.length === 1
+        ? "media"
+        : "baja";
+
+  return {
+    matchedPatterns: matchedPatterns.map((pattern) => pattern.id),
+    semanticFocus,
+    suggestedRoutes,
+    clarity,
+    usarParaRanking: clarity !== "baja" && semanticFocus.length > 0,
+  };
+}
+
+function normalizarTexto(text: string) {
   return text
     .toLowerCase()
     .normalize("NFD")
@@ -305,6 +596,7 @@ function normalizeText(text: string) {
     .trim();
 }
 
-function unique<T>(values: T[]) {
+function unicos<T>(values: T[]) {
   return Array.from(new Set(values));
 }
+

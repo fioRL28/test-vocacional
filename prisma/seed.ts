@@ -1,8 +1,8 @@
-import "dotenv/config";
-import { seedVocationalCatalog } from "../lib/vocational/persistence";
+﻿import "dotenv/config";
+import { sembrarCatalogoVocacional } from "../backend/vocational/persistence";
 
 async function main() {
-  await seedVocationalCatalog();
+  await sembrarCatalogoVocacional();
 
   console.log("Seed vocacional completado.");
 }
@@ -11,3 +11,4 @@ main().catch((error) => {
   console.error(error);
   process.exit(1);
 });
+
