@@ -26,6 +26,7 @@ export default async function ReportesPage({
   const model = first(params.model);
   const from = first(params.from);
   const to = first(params.to);
+  const detail = first(params.detail);
   const filters: ReportFilters = { from, model, profile, status, to };
   const resultWhere = construirWhereResultadosReporte(filters);
   const completedSessionWhere = construirWhereSesionesReporte({
@@ -86,6 +87,12 @@ export default async function ReportesPage({
       value ? [[key, value]] : [],
     ),
   ).toString();
+  const detailQueryBase = new URLSearchParams(
+    Object.entries({ from, model, profile, status, to }).flatMap(([key, value]) =>
+      value ? [[key, value]] : [],
+    ),
+  );
+  const selectedResult = results.find((result) => String(result.id) === detail);
 
   const completedCount = completedSessions.length;
   const mostFrequentProfile = profileGroups[0]
@@ -255,6 +262,42 @@ export default async function ReportesPage({
         </ChartCard>
       </section>
 
+      {selectedResult ? (
+        <section
+          id="detalle-resultado"
+          className="mt-4 rounded-2xl border border-[#d9cef7] bg-white p-5 shadow-[0_10px_28px_rgba(37,44,97,0.05)]"
+        >
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h2 className="text-[1rem] font-bold tracking-[-0.01em] text-[#071033]">
+                Detalle del resultado
+              </h2>
+              <p className="mt-1 text-xs font-medium text-[#66708f]">
+                Sesión {selectedResult.session.participantCode ?? `RF-${selectedResult.sessionId.slice(0, 8).toUpperCase()}`}
+              </p>
+            </div>
+
+            <a
+              className="w-fit rounded-lg border border-[#ded7f4] px-3 py-2 text-xs font-bold text-[#7c3aed] transition hover:bg-[#f6f3ff]"
+              href={`/admin/reportes${query ? `?${query}` : ""}`}
+            >
+              Cerrar detalle
+            </a>
+          </div>
+
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <DetailItem label="Perfil sugerido" value={selectedResult.predictedProfile.name} />
+            <DetailItem label="Confianza" value={selectedResult.confidenceScore ? `${Number(selectedResult.confidenceScore).toFixed(1)}%` : "—"} />
+            <DetailItem label="Modelo" value={formatModelName(selectedResult.modelUsed)} />
+            <DetailItem label="Preguntas" value={`${selectedResult.session.totalQuestions}`} />
+            <DetailItem label="Claridad" value={selectedResult.profileClarityScore ? `${Number(selectedResult.profileClarityScore).toFixed(1)}%` : "—"} />
+            <DetailItem label="Estabilidad" value={selectedResult.resultStabilityScore ? `${Number(selectedResult.resultStabilityScore).toFixed(1)}%` : "—"} />
+            <DetailItem label="Estado" value={selectedResult.session.status} />
+            <DetailItem label="Fecha" value={formatDate(selectedResult.createdAt)} />
+          </div>
+        </section>
+      ) : null}
+
       <section className="mt-4 rounded-2xl border border-[#e7e2f4] bg-white shadow-[0_10px_28px_rgba(37,44,97,0.04)]">
         <div className="flex flex-col gap-2 border-b border-[#eef0f6] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -324,12 +367,12 @@ export default async function ReportesPage({
 
                   <td className="border-b border-[#eef0f6] px-4 py-3 pr-5">
                     <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
+                      <a
                         className="rounded-lg border border-[#cdbdf9] px-3 py-1.5 text-[11px] font-bold text-[#7c3aed] transition hover:bg-[#f6f3ff]"
+                        href={`/admin/reportes?${buildDetailQuery(detailQueryBase, result.id)}#detalle-resultado`}
                       >
                         Ver detalle
-                      </button>
+                      </a>
 
                       <a
                         className="rounded-lg border border-[#d8d2e7] px-3 py-1.5 text-[11px] font-bold text-[#071033] transition hover:bg-[#f6f3ff]"
@@ -620,6 +663,17 @@ function EmptyText({ children }: { children: React.ReactNode }) {
   return <p className="py-6 text-center text-xs font-medium text-[#6e7696]">{children}</p>;
 }
 
+function DetailItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-[#eef0f6] bg-[#fbfaff] px-4 py-3">
+      <p className="text-[11px] font-bold uppercase tracking-[0.03em] text-[#7a829f]">
+        {label}
+      </p>
+      <p className="mt-1 text-sm font-bold text-[#071033]">{value}</p>
+    </div>
+  );
+}
+
 function ReportIcon({
   name,
 }: {
@@ -688,6 +742,13 @@ function ReportIcon({
 
 function first(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
+}
+
+function buildDetailQuery(base: URLSearchParams, id: number) {
+  const params = new URLSearchParams(base);
+  params.set("detail", String(id));
+
+  return params.toString();
 }
 
 function sessionDateRange(

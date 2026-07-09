@@ -14,8 +14,18 @@ type DatasetSummary = Awaited<ReturnType<typeof obtenerResumenDatasetCsv>>[numbe
 type SampleRow = DatasetSummary["sample"][number];
 type DatePoint = DatasetSummary["dateDistribution"][number];
 
-export default async function DatasetPage() {
+export default async function DatasetPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const currentAdmin = await requerirAdminActual();
+  const params = await searchParams;
+  const statusFilter = first(params.estado) ?? "todos";
+  const profileFilter = first(params.perfil) ?? "";
+  const dateFilter = first(params.fecha) ?? "30";
+  const trainingFilter = first(params.entrenamiento) ?? "todos";
+  const detail = first(params.detalle);
   const datasets = await obtenerResumenDatasetCsv();
   const mainDataset = datasets[0];
   const statusSummary = mainDataset?.statusSummary ?? {
@@ -33,7 +43,19 @@ export default async function DatasetPage() {
   const discardedRows = statusSummary.discardedRows;
   const readyRows = statusSummary.readyRows;
 
-  const sampleRows = mainDataset?.sample.slice(0, 5) ?? [];
+  const baseSampleRows = mainDataset?.sample ?? [];
+  const sampleRows = baseSampleRows
+    .map((row, index) => ({ index, row }))
+    .filter(({ row }) =>
+      matchesDatasetFilters(row, {
+        date: dateFilter,
+        profile: profileFilter,
+        status: statusFilter,
+        training: trainingFilter,
+      }),
+    )
+    .slice(0, 10);
+  const selectedSample = sampleRows.find((item) => String(item.index) === detail);
   const features = mainDataset?.features ?? [];
   const profileDistribution = mainDataset?.profileDistribution ?? [];
   const dateDistribution = mainDataset?.dateDistribution ?? [];
@@ -64,13 +86,13 @@ export default async function DatasetPage() {
             Exportar CSV
           </Link>
 
-          <button
-            type="button"
+          <Link
+            href="/admin/dataset#validacion-dataset"
             className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-[#ded7f4] bg-white px-5 text-xs font-bold text-[#071033] transition hover:bg-[#f6f3ff]"
           >
             <span aria-hidden="true">▣</span>
             Validar dataset
-          </button>
+          </Link>
 
           <form action={registrarEntrenamientoDesdeArtefactos}>
             <button
@@ -127,20 +149,21 @@ export default async function DatasetPage() {
 
 
       <section className="mt-4 rounded-2xl border border-[#e7e2f4] bg-white p-4 shadow-[0_10px_28px_rgba(37,44,97,0.04)]">
+        <form>
         <div className="grid gap-4 xl:grid-cols-[1.05fr_1fr_1fr_0.95fr_auto] xl:items-end">
           <SegmentedFilter
             label="Estado del registro"
             options={["Todos", "Válido", "Incompleto", "Descartado"]}
           />
 
-          <Select label="Perfil vocacional">
-            <option>Todos</option>
+          <Select label="Perfil vocacional" name="perfil" value={profileFilter}>
+            <option value="">Todos</option>
             {profileDistribution.map((item) => (
-              <option key={item.label}>{item.label}</option>
+              <option key={item.label} value={item.label}>{item.label}</option>
             ))}
           </Select>
 
-          <Select label="Fecha">
+          <Select label="Fecha" name="fecha" value={dateFilter}>
             <option>Últimos 30 días</option>
             <option>Últimos 7 días</option>
             <option>Histórico</option>
@@ -149,12 +172,40 @@ export default async function DatasetPage() {
           <SegmentedFilter label="Uso en entrenamiento" options={["Todos", "Sí", "No"]} />
 
           <button
-            type="button"
+            type="submit"
             className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-[#7c3aed] px-7 text-xs font-bold text-white transition hover:bg-[#6d28d9]"
           >
             <span aria-hidden="true">▽</span>
             Filtrar
           </button>
+        </div>
+        </form>
+      </section>
+
+      <section
+        id="validacion-dataset"
+        className="mt-4 rounded-2xl border border-[#d9cef7] bg-white p-4 shadow-[0_10px_28px_rgba(37,44,97,0.04)]"
+      >
+        <h2 className="text-[1rem] font-bold tracking-[-0.01em] text-[#071033]">
+          Validacion del dataset
+        </h2>
+        <div className="mt-3 grid gap-3 md:grid-cols-3">
+          <ValidationItem
+            label="Calidad"
+            value={validRows > 0 ? "Operativo" : "Sin registros validos"}
+          />
+          <ValidationItem
+            label="Listo para entrenamiento"
+            value={`${readyRows.toLocaleString("es-PE")} filas`}
+          />
+          <ValidationItem
+            label="Observaciones"
+            value={
+              incompleteRows || discardedRows
+                ? "Revisar filas incompletas o descartadas"
+                : "Sin alertas"
+            }
+          />
         </div>
       </section>
 
@@ -231,7 +282,7 @@ export default async function DatasetPage() {
               </thead>
 
               <tbody>
-                {sampleRows.map((row, index) => {
+                {sampleRows.map(({ index, row }) => {
                   const status = getRecordStatus(row);
                   const confidence = getConfidence(row);
 
@@ -260,19 +311,31 @@ export default async function DatasetPage() {
                       </td>
                       <td className="border-b border-[#eef0f6] px-3 py-2.5 pr-4">
                         <div className="flex flex-wrap gap-2">
-                          <button
-                            type="button"
+                          <Link
+                            href={`/admin/dataset?${buildDatasetQuery({
+                              date: dateFilter,
+                              detail: String(index),
+                              profile: profileFilter,
+                              status: statusFilter,
+                              training: trainingFilter,
+                            })}#detalle-registro`}
                             className="rounded-lg border border-[#cdbdf9] px-3 py-1.5 text-[11px] font-bold text-[#7c3aed] transition hover:bg-[#f6f3ff]"
                           >
                             Ver detalle
-                          </button>
+                          </Link>
                           {status !== "Válido" ? (
-                            <button
-                              type="button"
+                            <Link
+                              href={`/admin/dataset?${buildDatasetQuery({
+                                date: dateFilter,
+                                detail: String(index),
+                                profile: profileFilter,
+                                status: statusFilter,
+                                training: trainingFilter,
+                              })}#detalle-registro`}
                               className="rounded-lg border border-[#d8d2e7] px-3 py-1.5 text-[11px] font-bold text-[#071033] transition hover:bg-[#f6f3ff]"
                             >
                               Revisar
-                            </button>
+                            </Link>
                           ) : null}
                         </div>
                       </td>
@@ -289,6 +352,51 @@ export default async function DatasetPage() {
             )}
           </div>
         </article>
+
+        {selectedSample ? (
+          <article
+            id="detalle-registro"
+            className="rounded-2xl border border-[#d9cef7] bg-white p-5 shadow-[0_10px_28px_rgba(37,44,97,0.04)]"
+          >
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h2 className="text-[1rem] font-bold tracking-[-0.01em] text-[#071033]">
+                  Detalle del registro
+                </h2>
+                <p className="mt-1 text-xs font-medium text-[#66708f]">
+                  {getSessionId(selectedSample.row, selectedSample.index)}
+                </p>
+              </div>
+              <Link
+                className="w-fit rounded-lg border border-[#ded7f4] px-3 py-2 text-xs font-bold text-[#7c3aed] transition hover:bg-[#f6f3ff]"
+                href={`/admin/dataset?${buildDatasetQuery({
+                  date: dateFilter,
+                  profile: profileFilter,
+                  status: statusFilter,
+                  training: trainingFilter,
+                })}`}
+              >
+                Cerrar detalle
+              </Link>
+            </div>
+
+            <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+              {selectedSample.row.slice(0, 18).map((cell) => (
+                <div
+                  key={cell.header}
+                  className="rounded-xl border border-[#eef0f6] bg-[#fbfaff] px-4 py-3"
+                >
+                  <p className="truncate text-[11px] font-bold uppercase tracking-[0.03em] text-[#7a829f]">
+                    {cell.header}
+                  </p>
+                  <p className="mt-1 break-words text-xs font-semibold text-[#071033]">
+                    {cleanDatasetText(cell.value) || "—"}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </article>
+        ) : null}
 
         <article className="rounded-2xl border border-[#e7e2f4] bg-white shadow-[0_10px_28px_rgba(37,44,97,0.04)]">
           <div className="flex flex-col gap-2 border-b border-[#eef0f6] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
@@ -402,27 +510,36 @@ function SegmentedFilter({
   label: string;
   options: string[];
 }) {
+  const name = label.toLowerCase().includes("entrenamiento")
+    ? "entrenamiento"
+    : "estado";
+
   return (
     <div className="grid min-w-0 gap-2">
       <p className="text-xs font-bold text-[#071033]">{label}</p>
-      <div
-        className="grid min-h-10 overflow-hidden rounded-xl border border-[#d8d2e7] bg-white"
-        style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
+      <select
+        className="min-h-10 rounded-xl border border-[#d8d2e7] bg-white px-4 text-xs font-medium text-[#071033] outline-none transition focus:border-[#7c3aed] focus:ring-2 focus:ring-[#eee8ff]"
+        name={name}
       >
         {options.map((option, index) => (
-          <button
+          <option
             key={option}
-            type="button"
-            className={`min-w-0 px-2 text-center text-[11px] font-bold leading-tight transition ${
+            value={
               index === 0
-                ? "bg-[#f6f3ff] text-[#7c3aed]"
-                : "border-l border-[#e8e2f5] text-[#071033] hover:bg-[#fbfaff]"
-            }`}
+                ? "todos"
+                : name === "entrenamiento"
+                  ? index === 1
+                    ? "si"
+                    : "no"
+                : normalizeFilterText(option).includes("si")
+                  ? "si"
+                  : normalizeFilterText(option)
+            }
           >
             {option}
-          </button>
+          </option>
         ))}
-      </div>
+      </select>
     </div>
   );
 }
@@ -430,14 +547,22 @@ function SegmentedFilter({
 function Select({
   children,
   label,
+  name,
+  value,
 }: {
   children: React.ReactNode;
   label: string;
+  name?: string;
+  value?: string;
 }) {
   return (
     <label className="grid gap-2 text-xs font-bold text-[#071033]">
       {label}
-      <select className="min-h-10 rounded-xl border border-[#d8d2e7] bg-white px-4 text-xs font-medium text-[#071033] outline-none transition focus:border-[#7c3aed] focus:ring-2 focus:ring-[#eee8ff]">
+      <select
+        className="min-h-10 rounded-xl border border-[#d8d2e7] bg-white px-4 text-xs font-medium text-[#071033] outline-none transition focus:border-[#7c3aed] focus:ring-2 focus:ring-[#eee8ff]"
+        defaultValue={value}
+        name={name}
+      >
         {children}
       </select>
     </label>
@@ -763,6 +888,17 @@ function EmptyText({ children }: { children: React.ReactNode }) {
   return <p className="py-6 text-center text-xs font-medium text-[#6e7696]">{children}</p>;
 }
 
+function ValidationItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-[#eef0f6] bg-[#fbfaff] px-4 py-3">
+      <p className="text-[11px] font-bold uppercase tracking-[0.03em] text-[#7a829f]">
+        {label}
+      </p>
+      <p className="mt-1 text-sm font-bold text-[#071033]">{value}</p>
+    </div>
+  );
+}
+
 function DatasetIcon({
   name,
 }: {
@@ -829,6 +965,91 @@ function DatasetIcon({
 
 function percent(value: number, total: number) {
   return ((value / total) * 100).toFixed(1);
+}
+
+function first(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function buildDatasetQuery({
+  date,
+  detail,
+  profile,
+  status,
+  training,
+}: {
+  date?: string;
+  detail?: string;
+  profile?: string;
+  status?: string;
+  training?: string;
+}) {
+  const params = new URLSearchParams();
+
+  if (status && status !== "todos") params.set("estado", status);
+  if (profile) params.set("perfil", profile);
+  if (date && date !== "30") params.set("fecha", date);
+  if (training && training !== "todos") params.set("entrenamiento", training);
+  if (detail) params.set("detalle", detail);
+
+  return params.toString();
+}
+
+function matchesDatasetFilters(
+  row: SampleRow,
+  filters: {
+    date: string;
+    profile: string;
+    status: string;
+    training: string;
+  },
+) {
+  const status = normalizeFilterText(getRecordStatus(row));
+  const filterStatus = normalizeFilterText(filters.status);
+  const profile = getProfile(row);
+  const ready = status.includes("valido");
+
+  if (filterStatus !== "todos" && !status.includes(filterStatus)) {
+    return false;
+  }
+
+  if (filters.profile && profile !== filters.profile) {
+    return false;
+  }
+
+  if (filters.training === "si" && !ready) {
+    return false;
+  }
+
+  if (filters.training === "no" && ready) {
+    return false;
+  }
+
+  return matchesDateFilter(row, filters.date);
+}
+
+function matchesDateFilter(row: SampleRow, filter: string) {
+  const normalized = normalizeFilterText(filter);
+  if (normalized.includes("historico")) return true;
+
+  const days = normalized.includes("7") ? 7 : 30;
+  const rawDate = getDateValue(row);
+  const parsed = new Date(rawDate.replaceAll('"', "").trim());
+
+  if (Number.isNaN(parsed.getTime())) return true;
+
+  const threshold = new Date();
+  threshold.setDate(threshold.getDate() - days);
+  threshold.setHours(0, 0, 0, 0);
+
+  return parsed >= threshold;
+}
+
+function normalizeFilterText(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
 }
 
 function getFeatures(dataset: DatasetSummary | undefined) {

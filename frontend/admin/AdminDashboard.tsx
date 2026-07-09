@@ -171,6 +171,12 @@ export function AdminDashboard({
 }
 
 function Header({ generatedAt }: { generatedAt: string }) {
+  const rangeItems = [
+    { href: "/admin?rango=1", label: "Hoy" },
+    { href: "/admin?rango=7", label: "Últimos 7 días" },
+    { href: "/admin?rango=30", label: "Últimos 30 días" },
+  ];
+
   return (
     <header className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
       <div>
@@ -184,25 +190,25 @@ function Header({ generatedAt }: { generatedAt: string }) {
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="inline-grid grid-cols-3 overflow-hidden rounded-xl border border-[#e4e6f0] bg-white p-1 text-xs font-semibold text-[#66708f] shadow-[0_10px_28px_rgba(31,40,89,0.04)]">
-          <button type="button" className="rounded-lg px-5 py-2">
-            Hoy
-          </button>
-          <button
-            type="button"
-            className="rounded-lg bg-[#7c3aed] px-5 py-2 text-white shadow-sm"
-          >
-            Últimos 7 días
-          </button>
-          <button type="button" className="rounded-lg px-5 py-2">
-            Últimos 30 días
-          </button>
+          {rangeItems.map((item) => (
+            <Link
+              key={item.href}
+              className="rounded-lg px-5 py-2 text-center transition hover:bg-[#f6f3ff] hover:text-[#7c3aed]"
+              href={item.href}
+            >
+              {item.label}
+            </Link>
+          ))}
         </div>
 
-        <div className="flex items-center gap-3 rounded-xl border border-[#e4e6f0] bg-white px-4 py-2.5 text-xs font-semibold text-[#66708f] shadow-[0_10px_28px_rgba(31,40,89,0.04)]">
+        <Link
+          href="/admin"
+          className="flex items-center gap-3 rounded-xl border border-[#e4e6f0] bg-white px-4 py-2.5 text-xs font-semibold text-[#66708f] shadow-[0_10px_28px_rgba(31,40,89,0.04)] transition hover:bg-[#f6f3ff]"
+        >
           <span className="h-2 w-2 rounded-full bg-[#24c06f]" />
           <span>Actualizado {generatedAt}</span>
           <span className="text-[#7c3aed]">↻</span>
-        </div>
+        </Link>
       </div>
     </header>
   );
@@ -217,9 +223,7 @@ function SummaryGrid({ data }: { data: AdminDashboardData }) {
       accent: "purple" as const,
       icon: "users",
       label: "Sesiones anónimas",
-      meta: `Últimos 7 días: ${formatNumber(
-        sumActivity(data.activity, "sessions"),
-      )}`,
+      meta: `${data.dateRange}: ${formatNumber(sumActivity(data.activity, "sessions"))}`,
       value: formatNumber(data.summary.anonymousSessions),
       isText: false,
     },
@@ -227,9 +231,7 @@ function SummaryGrid({ data }: { data: AdminDashboardData }) {
       accent: "pink" as const,
       icon: "clipboard",
       label: "Tests completados",
-      meta: `Últimos 7 días: ${formatNumber(
-        sumActivity(data.activity, "completed"),
-      )}`,
+      meta: `${data.dateRange}: ${formatNumber(sumActivity(data.activity, "completed"))}`,
       value: formatNumber(data.summary.completedTests),
       isText: false,
     },

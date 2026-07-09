@@ -8,16 +8,60 @@ import { AdminShell } from "@/frontend/admin/AdminShell";
 
 export const dynamic = "force-dynamic";
 
-export default async function ModelosPage() {
+export default async function ModelosPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const currentAdmin = await requerirAdminActual();
+  const params = await searchParams;
+  const rawModelFilter = first(params.modelo);
+  const modelFilter = rawModelFilter && rawModelFilter !== "Todos" ? rawModelFilter : undefined;
+  const activeModelId = Number(first(params.activo));
+  const detailModelId = Number(first(params.detalle));
+  const expandedChartKey = first(params.grafico);
   const data = await obtenerDatosModelosAdmin();
-  const experimentRows = data.experiments;
+  const experimentRows = data.experiments.filter((experiment) =>
+    modelFilter ? experiment.modelName === modelFilter : true,
+  );
 
   const bestExperiment = [...experimentRows].sort(
     (a, b) => b.f1Score - a.f1Score,
   )[0];
 
-  const activeExperiment = bestExperiment;
+  const activeExperiment =
+    data.experiments.find((experiment) => experiment.id === activeModelId) ??
+    bestExperiment;
+  const detailExperiment = data.experiments.find(
+    (experiment) => experiment.id === detailModelId,
+  );
+  const modelOptions = Array.from(
+    new Set(data.experiments.map((experiment) => experiment.modelName)),
+  );
+  const activeModelQuery = activeExperiment
+    ? `?modelo=${encodeURIComponent(activeExperiment.modelName)}`
+    : "";
+  const chartCards = [
+    {
+      key: "curvas-aprendizaje",
+      src: `/api/admin/modelos/graficos/curvas-aprendizaje${activeModelQuery}`,
+      subtitle: "Entrenamiento vs. validación",
+      title: "Curvas de aprendizaje",
+    },
+    {
+      key: "comparacion-general",
+      src: `/api/admin/modelos/graficos/comparacion-general${activeModelQuery}`,
+      subtitle: "Accuracy, precisión, recall y F1",
+      title: "Comparación general",
+    },
+    {
+      key: "matriz-confusion",
+      src: `/api/admin/modelos/graficos/matriz-confusion${activeModelQuery}`,
+      subtitle: "Errores y aciertos del modelo",
+      title: "Matriz de confusión",
+    },
+  ];
+  const expandedChart = chartCards.find((chart) => chart.key === expandedChartKey);
 
   return (
     <AdminShell
@@ -101,8 +145,14 @@ export default async function ModelosPage() {
 
       <section className="mt-4 rounded-2xl border border-[#e7e2f4] bg-white p-4 shadow-[0_10px_28px_rgba(37,44,97,0.04)]">
         <div className="grid gap-4 xl:grid-cols-[1fr_1fr_1.35fr] xl:items-end">
-          <Select label="Modelo">
+          <form className="contents">
+          <Select label="Modelo" name="modelo" value={modelFilter ?? ""}>
             <option>Todos</option>
+            {modelOptions.map((modelName) => (
+              <option key={modelName} value={modelName}>
+                {modelName}
+              </option>
+            ))}
             <option>Regresión logística</option>
             <option>SVM</option>
             <option>Random Forest</option>
@@ -116,6 +166,11 @@ export default async function ModelosPage() {
             <option>Último entrenamiento</option>
           </Select>
 
+          <button className="min-h-10 rounded-xl bg-[#7c3aed] px-5 text-xs font-bold text-white transition hover:bg-[#6d28d9]">
+            Filtrar
+          </button>
+          </form>
+
           <div className="rounded-xl bg-[#fbf8ff] px-4 py-3 text-xs font-medium text-[#53607e]">
             <span className="mr-2 font-bold text-[#7c3aed]">ⓘ</span>
             Revisa métricas, matriz de confusión y curvas antes de activar un
@@ -124,25 +179,100 @@ export default async function ModelosPage() {
         </div>
       </section>
 
+      {detailExperiment ? (
+        <section
+          id="detalle-modelo"
+          className="mt-4 rounded-2xl border border-[#d9cef7] bg-white p-5 shadow-[0_10px_28px_rgba(37,44,97,0.04)]"
+        >
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h2 className="text-[1rem] font-bold tracking-[-0.01em] text-[#071033]">
+                Detalle del modelo
+              </h2>
+              <p className="mt-1 text-xs font-medium text-[#66708f]">
+                Experimento #{detailExperiment.id}
+              </p>
+            </div>
+            <a
+              className="w-fit rounded-lg border border-[#ded7f4] px-3 py-2 text-xs font-bold text-[#7c3aed] transition hover:bg-[#f6f3ff]"
+              href={`/admin/modelos${buildModelQuery({
+                active: activeExperiment?.id,
+                model: modelFilter,
+              })}`}
+            >
+              Cerrar detalle
+            </a>
+          </div>
+
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <DetailItem label="Modelo" value={detailExperiment.modelName} />
+            <DetailItem label="Accuracy" value={asPercent(detailExperiment.accuracy)} />
+            <DetailItem label="Precision" value={asPercent(detailExperiment.precision)} />
+            <DetailItem label="Recall" value={asPercent(detailExperiment.recall)} />
+            <DetailItem label="F1 Score" value={asPercent(detailExperiment.f1Score)} />
+            <DetailItem label="Dataset" value={detailExperiment.datasetVersion} />
+            <DetailItem
+              label="Registros"
+              value={detailExperiment.datasetRows.toLocaleString("es-PE")}
+            />
+            <DetailItem label="Entrenado" value={formatDate(detailExperiment.trainedAt)} />
+          </div>
+        </section>
+      ) : null}
+
       <section className="mt-4 grid gap-4 xl:grid-cols-3">
-        <TrainingChartCard
-          title="Curvas de aprendizaje"
-          subtitle="Entrenamiento vs. validación"
-          src="/api/admin/modelos/graficos/curvas-aprendizaje"
-        />
-
-        <TrainingChartCard
-          title="Comparación general"
-          subtitle="Accuracy, precisión, recall y F1"
-          src="/api/admin/modelos/graficos/comparacion-general"
-        />
-
-        <TrainingChartCard
-          title="Matriz de confusión"
-          subtitle="Errores y aciertos del modelo"
-          src="/api/admin/modelos/graficos/matriz-confusion"
-        />
+        {chartCards.map((chart) => (
+          <TrainingChartCard
+            key={chart.key}
+            expandHref={`/admin/modelos${buildModelQuery({
+              active: activeExperiment?.id,
+              chart: chart.key,
+              detail: detailExperiment?.id,
+              model: modelFilter,
+            })}#visor-grafico`}
+            src={chart.src}
+            subtitle={chart.subtitle}
+            title={chart.title}
+          />
+        ))}
       </section>
+
+      {expandedChart ? (
+        <section
+          id="visor-grafico"
+          className="mt-4 rounded-2xl border border-[#d9cef7] bg-white p-5 shadow-[0_10px_28px_rgba(37,44,97,0.04)]"
+        >
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h2 className="text-[1.1rem] font-bold tracking-[-0.01em] text-[#071033]">
+                {expandedChart.title}
+              </h2>
+              <p className="mt-1 text-xs font-medium text-[#66708f]">
+                {expandedChart.subtitle}
+              </p>
+            </div>
+            <a
+              className="w-fit rounded-lg border border-[#ded7f4] px-3 py-2 text-xs font-bold text-[#7c3aed] transition hover:bg-[#f6f3ff]"
+              href={`/admin/modelos${buildModelQuery({
+                active: activeExperiment?.id,
+                detail: detailExperiment?.id,
+                model: modelFilter,
+              })}`}
+            >
+              Cerrar ampliación
+            </a>
+          </div>
+
+          <div className="overflow-auto rounded-xl border border-[#eef0f6] bg-[#fbfaff] p-3">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              alt={expandedChart.title}
+              className="mx-auto min-h-[620px] min-w-[980px] object-contain"
+              src={expandedChart.src}
+            />
+          </div>
+        </section>
+      ) : null}
 
       <section
         id="resumen-modelos"
@@ -187,7 +317,7 @@ export default async function ModelosPage() {
             </thead>
 
             <tbody>
-              {experimentRows.map((experiment, index) => {
+              {experimentRows.map((experiment) => {
                 const isActive = activeExperiment?.id === experiment.id;
                 const isDiscarded = experiment.f1Score < 0.65;
 
@@ -239,18 +369,25 @@ export default async function ModelosPage() {
                       <div className="flex flex-wrap gap-2">
                         <a
                           className="rounded-lg border border-[#cdbdf9] px-3 py-1.5 text-[11px] font-bold text-[#7c3aed] transition hover:bg-[#f6f3ff]"
-                          href={`/admin/modelos/${experiment.id}`}
+                          href={`/admin/modelos${buildModelQuery({
+                            active: activeExperiment?.id,
+                            detail: experiment.id,
+                            model: modelFilter,
+                          })}#detalle-modelo`}
                         >
                           Ver detalle
                         </a>
 
                         {!isActive && !isDiscarded ? (
-                          <button
-                            type="button"
+                          <a
+                            href={`/admin/modelos${buildModelQuery({
+                              active: experiment.id,
+                              model: modelFilter,
+                            })}#resumen-modelos`}
                             className="rounded-lg border border-[#cdbdf9] px-3 py-1.5 text-[11px] font-bold text-[#7c3aed] transition hover:bg-[#f6f3ff]"
                           >
                             Activar
-                          </button>
+                          </a>
                         ) : null}
 
                         {isActive ? (
@@ -322,15 +459,23 @@ function InfoCard({
 function Select({
   children,
   label,
+  name,
+  value,
 }: {
   children: React.ReactNode;
   label: string;
+  name?: string;
+  value?: string;
 }) {
   return (
     <label className="grid gap-2 text-xs font-bold text-[#071033]">
       {label}
 
-      <select className="min-h-10 rounded-xl border border-[#d8d2e7] bg-white px-4 text-xs font-medium text-[#071033] outline-none transition focus:border-[#7c3aed] focus:ring-2 focus:ring-[#eee8ff]">
+      <select
+        className="min-h-10 rounded-xl border border-[#d8d2e7] bg-white px-4 text-xs font-medium text-[#071033] outline-none transition focus:border-[#7c3aed] focus:ring-2 focus:ring-[#eee8ff]"
+        defaultValue={value}
+        name={name}
+      >
         {children}
       </select>
     </label>
@@ -338,10 +483,12 @@ function Select({
 }
 
 function TrainingChartCard({
+  expandHref,
   src,
   subtitle,
   title,
 }: {
+  expandHref: string;
   src: string;
   subtitle: string;
   title: string;
@@ -349,15 +496,27 @@ function TrainingChartCard({
   return (
     <article className="rounded-2xl border border-[#e7e2f4] bg-white p-4 shadow-[0_10px_28px_rgba(37,44,97,0.04)]">
       <div className="mb-3">
-        <h2 className="text-[1rem] font-bold tracking-[-0.01em] text-[#071033]">
-          {title}
-        </h2>
-        <p className="mt-1 text-xs font-medium text-[#66708f]">{subtitle}</p>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-[1rem] font-bold tracking-[-0.01em] text-[#071033]">
+              {title}
+            </h2>
+            <p className="mt-1 text-xs font-medium text-[#66708f]">{subtitle}</p>
+          </div>
+          <a
+            className="shrink-0 rounded-lg border border-[#cdbdf9] px-3 py-1.5 text-[11px] font-bold text-[#7c3aed] transition hover:bg-[#f6f3ff]"
+            href={expandHref}
+          >
+            Ampliar
+          </a>
+        </div>
       </div>
 
       <div className="overflow-hidden rounded-xl border border-[#eef0f6] bg-[#fbfaff]">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img alt={title} className="h-[260px] w-full object-contain" src={src} />
+        <a href={expandHref}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img alt={title} className="h-[320px] w-full object-contain" src={src} />
+        </a>
       </div>
     </article>
   );
@@ -380,6 +539,17 @@ function MetricText({
     >
       {asPercent(value)}
     </span>
+  );
+}
+
+function DetailItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-[#eef0f6] bg-[#fbfaff] px-4 py-3">
+      <p className="text-[11px] font-bold uppercase tracking-[0.03em] text-[#7a829f]">
+        {label}
+      </p>
+      <p className="mt-1 text-sm font-bold text-[#071033]">{value}</p>
+    </div>
   );
 }
 
@@ -454,4 +624,31 @@ function formatDate(date: Date) {
     minute: "2-digit",
     month: "short",
   }).format(date);
+}
+
+function first(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function buildModelQuery({
+  active,
+  chart,
+  detail,
+  model,
+}: {
+  active?: number;
+  chart?: string;
+  detail?: number;
+  model?: string;
+}) {
+  const params = new URLSearchParams();
+
+  if (model) params.set("modelo", model);
+  if (active) params.set("activo", String(active));
+  if (detail) params.set("detalle", String(detail));
+  if (chart) params.set("grafico", chart);
+
+  const query = params.toString();
+
+  return query ? `?${query}` : "";
 }

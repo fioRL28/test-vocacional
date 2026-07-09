@@ -10,9 +10,15 @@ export const dynamic = "force-dynamic";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-export default async function AdminPage() {
+export default async function AdminPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ rango?: string | string[] }>;
+}) {
   const currentAdmin = await requerirAdminActual();
-  const data = await obtenerDatosDashboardAdmin();
+  const params = await searchParams;
+  const rangeDays = parseRangeDays(first(params.rango));
+  const data = await obtenerDatosDashboardAdmin(rangeDays);
 
   return (
     <AdminDashboard
@@ -23,10 +29,10 @@ export default async function AdminPage() {
   );
 }
 
-async function obtenerDatosDashboardAdmin(): Promise<AdminDashboardData> {
+async function obtenerDatosDashboardAdmin(rangeDays: number): Promise<AdminDashboardData> {
   const today = startOfDay(new Date());
-  const days = Array.from({ length: 7 }, (_, index) => {
-    const date = new Date(today.getTime() - (6 - index) * DAY_MS);
+  const days = Array.from({ length: rangeDays }, (_, index) => {
+    const date = new Date(today.getTime() - (rangeDays - 1 - index) * DAY_MS);
     return {
       date,
       key: date.toISOString().slice(0, 10),
@@ -121,7 +127,10 @@ async function obtenerDatosDashboardAdmin(): Promise<AdminDashboardData> {
 
   return {
     generatedAt: formatDateTime(new Date()),
-    dateRange: `${days[0].label} - ${days[6].label}`,
+    dateRange:
+      rangeDays === 1
+        ? days[0].label
+        : `${days[0].label} - ${days.at(-1)?.label ?? days[0].label}`,
     summary: {
       activeQuestions,
       adminUsers,
@@ -238,4 +247,15 @@ function formatStatus(status: string) {
   };
 
   return labels[status] ?? status;
+}
+
+function first(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function parseRangeDays(value: string | undefined) {
+  if (value === "1") return 1;
+  if (value === "30") return 30;
+
+  return 7;
 }
