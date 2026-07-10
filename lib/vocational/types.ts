@@ -14,7 +14,60 @@ export type Dimension =
   | "presion"
   | "tolerancia";
 
+export type RiasecDimension = Extract<
+  Dimension,
+  "realista" | "investigativo" | "artistico" | "social" | "emprendedor" | "convencional"
+>;
+
+export type BigFiveDimension = Extract<
+  Dimension,
+  "apertura" | "responsabilidad" | "extraversion" | "amabilidad" | "neuroticismo"
+>;
+
+export type VocationalTrainingType = "universitaria" | "tecnica" | "oficio";
+
+export type OccupationalRoute = {
+  id: string;
+  name: string;
+  riasecPrimary: RiasecDimension;
+  riasecSecondary: RiasecDimension[];
+  bigFiveSupport: BigFiveDimension[];
+  trainingTypes: VocationalTrainingType[];
+  description: string;
+  activities: string[];
+  recommendedWorkConditions: string[];
+  relatedProfileIds: string[];
+};
+
+export type OccupationalRouteCompatibility = {
+  route: OccupationalRoute;
+  score: number;
+  riasecPrimaryScore: number;
+  riasecSecondaryScore: number;
+  bigFiveSupportScore: number;
+  matchedRiasec: Array<{ dimension: RiasecDimension; value: number; role: "primary" | "secondary" }>;
+  matchedBigFive: Array<{ dimension: BigFiveDimension; value: number }>;
+  explanation: string[];
+};
+
 export type QuestionKind = "likert" | "open";
+
+export type ResponseScaleType =
+  | "interest"
+  | "frequency"
+  | "intensity"
+  | "forced_choice";
+
+export type ForcedChoiceOption = {
+  id: string;
+  text: string;
+  dimension: Dimension;
+  semanticFocus?: string[];
+  nextQuestionId?: number;
+  careerRouteIds?: string[];
+  isUnknown?: boolean;
+  opensTextInput?: boolean;
+};
 
 export type QuestionType =
   | "likert"
@@ -41,9 +94,12 @@ export type Question = {
   text: string;
   dimension?: Dimension;
   model?: "RIASEC" | "Big Five" | "Contexto";
+  scaleType?: ResponseScaleType;
+  contrastLabel?: string;
   stage: "exploracion" | "profundizacion" | "contexto";
   promptStyle?: PromptStyle;
   semanticFocus?: string[];
+  forcedChoiceOptions?: ForcedChoiceOption[];
   guidedOptions?: string[];
   unsureOptions?: string[];
   helperPrompts?: string[];
@@ -74,6 +130,9 @@ export type OpenAnswer = {
   trigger: NonNullable<Question["trigger"]>;
   text: string;
   order: number;
+  answerMode?: "guided-option" | "typed-text" | "unknown";
+  selectedOptionId?: string;
+  selectedOptionText?: string;
   careerReference?: string;
   observedMismatch?: boolean;
   suspiciousInput?: boolean;
@@ -113,6 +172,35 @@ export type Profile = {
   coreRiasec: Dimension[];
   supportBigFive: Dimension[];
   contextVariables: Dimension[];
+};
+
+export type VocationalCombinedPattern = {
+  id: string;
+  label: string;
+  profileId: Profile["id"];
+  score: number;
+  dimensions: Dimension[];
+  explanation: string;
+  socialManagementNuance?: boolean;
+  requiresExplicitOperationalSignal?: boolean;
+};
+
+export type RouteCompatibilityTrace = {
+  routeCode: string;
+  routeName: string;
+  domain?: string;
+  dimensionScore: number;
+  combinedPatternScore: number;
+  explicitEvidenceScore: number;
+  adaptiveConfirmationScore: number;
+  penaltyScore: number;
+  finalScore: number;
+  requiredEvidenceMet: boolean;
+  matchedEvidence?: string[];
+  missingEvidence?: string[];
+  contradictionEvidence?: string[];
+  reasons?: string[];
+  evidenceReasons?: string[];
 };
 
 export type VocationalFamilyMetadata = {

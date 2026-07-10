@@ -1,17 +1,22 @@
-import {
+﻿import {
   adaptiveFocusByRiasec,
   adaptiveThemeBlocks,
   bigFiveDimensions,
   COMMON_BASELINE_QUESTION_COUNT,
   contextDimensions,
   dimensionLabels,
+  maxForcedChoiceQuestions,
   maxOpenQuestions,
   measurableDimensions,
   profiles,
   questions,
   riasecDimensions,
 } from "./data";
-import { analyzeNarrativeText, analyzeSemanticFocusText } from "./responsePatterns";
+import {
+  analizarRespuestaLibreVocacional,
+  analizarTextoNarrativo,
+  analizarTextoFocoSemantico,
+} from "./responsePatterns";
 import type {
   AdaptiveStatus,
   AdaptiveDiagnostics,
@@ -28,6 +33,7 @@ import type {
   SearchParams,
   SemanticCoverage,
   ValidationObservation,
+  VocationalCombinedPattern,
 } from "./types";
 
 export const CORE_THRESHOLD = 3.5;
@@ -42,41 +48,116 @@ const MAX_THEME_BLOCK_QUESTIONS = 4;
 const RECOMMENDED_MAX_LIKERT_QUESTIONS = 26;
 export const MAX_COMMENT_LENGTH = 300;
 
+type VocationalCombinedPatternDefinition = Omit<
+  VocationalCombinedPattern,
+  "score"
+> & {
+  weights: Partial<Record<Dimension, number>>;
+};
+
+const combinedPatternDefinitions: VocationalCombinedPatternDefinition[] = [
+  {
+    id: "human-support-wellbeing",
+    label: "Apoyo humano, salud, orientación y bienestar",
+    profileId: "salud-apoyo-humano",
+    dimensions: ["social", "amabilidad", "responsabilidad"],
+    weights: { social: 1.2, amabilidad: 1.0, responsabilidad: 0.8 },
+    explanation:
+      "Tus respuestas combinan interés por trabajar con personas, cooperación y responsabilidad. Por eso aparecen rutas de apoyo humano, salud, orientación o bienestar.",
+  },
+  {
+    id: "social-leadership-education",
+    label: "Coordinación de personas, educación y liderazgo social",
+    profileId: "educacion-ciencias-sociales",
+    dimensions: ["social", "extraversion", "emprendedor"],
+    weights: { social: 1.05, extraversion: 0.8, emprendedor: 0.8 },
+    explanation:
+      "Tus respuestas combinan participación con otras personas, iniciativa y comunicación. Por eso aparecen rutas de coordinación de grupos, educación, liderazgo social o gestión con personas.",
+    socialManagementNuance: true,
+  },
+  {
+    id: "management-processes",
+    label: "Gestión, administración, proyectos y procesos",
+    profileId: "negocios-gestion",
+    dimensions: ["emprendedor", "convencional", "responsabilidad"],
+    weights: { emprendedor: 1.1, convencional: 0.85, responsabilidad: 0.85 },
+    explanation:
+      "Tus respuestas combinan iniciativa, organización y constancia. Por eso aparecen rutas relacionadas con coordinación de actividades, gestión de proyectos o liderazgo de equipos.",
+    requiresExplicitOperationalSignal: true,
+  },
+  {
+    id: "research-analysis",
+    label: "Investigación, análisis, ciencia y datos",
+    profileId: "ciencia-datos-investigacion",
+    dimensions: ["investigativo", "apertura", "responsabilidad"],
+    weights: { investigativo: 1.15, apertura: 0.85, responsabilidad: 0.8 },
+    explanation:
+      "Tus respuestas combinan curiosidad, análisis y responsabilidad. Por eso aparecen rutas de investigación, ciencia, datos o interpretación de evidencia.",
+  },
+  {
+    id: "creative-communication",
+    label: "Comunicación, diseño y contenidos",
+    profileId: "arte-comunicacion-diseno",
+    dimensions: ["artistico", "apertura", "extraversion"],
+    weights: { artistico: 1.15, apertura: 0.9, extraversion: 0.65 },
+    explanation:
+      "Tus respuestas combinan creatividad, apertura a ideas y comunicación. Por eso aparecen rutas de diseño, comunicación, contenidos o expresión visual.",
+  },
+  {
+    id: "applied-technology",
+    label: "Tecnología, ingeniería y soluciones aplicadas",
+    profileId: "ingenieria-tecnologia",
+    dimensions: ["realista", "investigativo", "responsabilidad"],
+    weights: { realista: 1.1, investigativo: 1.0, responsabilidad: 0.8 },
+    explanation:
+      "Tus respuestas combinan interés práctico, análisis y constancia. Por eso aparecen rutas de tecnología, ingeniería o soluciones aplicadas.",
+  },
+  {
+    id: "spatial-object-design",
+    label: "Diseño espacial, arquitectura y objetos",
+    profileId: "arte-comunicacion-diseno",
+    dimensions: ["artistico", "realista", "apertura"],
+    weights: { artistico: 1.05, realista: 0.9, apertura: 0.85 },
+    explanation:
+      "Tus respuestas combinan creatividad, interés práctico y exploración de ideas. Por eso aparecen rutas de diseño espacial, arquitectura, objetos o ambientes.",
+  },
+];
+
 type SanitizedUserText = {
   text: string;
   suspiciousInput: boolean;
   suspiciousReason?: string;
 };
 
-function getParam(searchParams: SearchParams, key: string) {
+function obtenerParametro(searchParams: SearchParams, key: string) {
   const value = searchParams[key];
   return Array.isArray(value) ? value[0] : value;
 }
 
-export function encodeAnswers(answers: Answer[]) {
+export function codificarRespuestas(answers: Answer[]) {
   return Buffer.from(JSON.stringify(answers), "utf8").toString("base64url");
 }
 
-export function decodeAnswers(value: string | undefined): Answer[] {
+export function decodificarRespuestas(value: string | undefined): Answer[] {
   if (!value) return [];
 
   try {
     const decoded = Buffer.from(value, "base64url").toString("utf8");
     const parsed = JSON.parse(decoded);
-    return Array.isArray(parsed) ? sanitizeDecodedAnswers(parsed) : [];
+    return Array.isArray(parsed) ? sanearRespuestasDecodificadas(parsed) : [];
   } catch {
     return [];
   }
 }
 
-function sanitizeDecodedAnswers(answers: unknown[]) {
+function sanearRespuestasDecodificadas(answers: unknown[]) {
   return answers.flatMap((answer): Answer[] => {
     if (!answer || typeof answer !== "object") return [];
 
     const candidate = answer as Partial<Answer>;
 
     if (candidate.kind === "likert") {
-      const sanitizedComment = sanitizeOptionalUserText(candidate.comment);
+      const sanitizedComment = sanearTextoUsuarioOpcional(candidate.comment);
 
       return [
         {
@@ -85,7 +166,7 @@ function sanitizeDecodedAnswers(answers: unknown[]) {
           ...(sanitizedComment.suspiciousInput
             ? {
                 suspiciousInput: true,
-                suspiciousReason: mergeSuspiciousReasons(
+                suspiciousReason: combinarRazonesSospechosas(
                   candidate.suspiciousReason,
                   sanitizedComment.suspiciousReason,
                 ),
@@ -96,8 +177,8 @@ function sanitizeDecodedAnswers(answers: unknown[]) {
     }
 
     if (candidate.kind === "open") {
-      const sanitizedText = sanitizeUserText(candidate.text ?? "");
-      const sanitizedCareerReference = sanitizeOptionalUserText(candidate.careerReference);
+      const sanitizedText = sanearTextoUsuario(candidate.text ?? "");
+      const sanitizedCareerReference = sanearTextoUsuarioOpcional(candidate.careerReference);
 
       return [
         {
@@ -109,7 +190,7 @@ function sanitizeDecodedAnswers(answers: unknown[]) {
           ...(sanitizedText.suspiciousInput || sanitizedCareerReference.suspiciousInput
             ? {
                 suspiciousInput: true,
-                suspiciousReason: mergeSuspiciousReasons(
+                suspiciousReason: combinarRazonesSospechosas(
                   candidate.suspiciousReason,
                   sanitizedText.suspiciousReason,
                   sanitizedCareerReference.suspiciousReason,
@@ -124,17 +205,17 @@ function sanitizeDecodedAnswers(answers: unknown[]) {
   });
 }
 
-function sanitizeOptionalUserText(value: string | undefined) {
-  return value ? sanitizeUserText(value) : { text: "", suspiciousInput: false };
+function sanearTextoUsuarioOpcional(value: string | undefined) {
+  return value ? sanearTextoUsuario(value) : { text: "", suspiciousInput: false };
 }
 
-function mergeSuspiciousReasons(...reasons: Array<string | undefined>) {
+function combinarRazonesSospechosas(...reasons: Array<string | undefined>) {
   const uniqueReasons = Array.from(new Set(reasons.filter((reason): reason is string => Boolean(reason))));
 
   return uniqueReasons.length ? uniqueReasons.join(", ") : undefined;
 }
 
-export function sanitizeUserText(value: string, maxLength = MAX_COMMENT_LENGTH): SanitizedUserText {
+export function sanearTextoUsuario(value: string, maxLength = MAX_COMMENT_LENGTH): SanitizedUserText {
   const reasons: string[] = [];
   const original = String(value ?? "");
   let sanitized = original.replace(/\u0000/g, "").trim();
@@ -144,22 +225,22 @@ export function sanitizeUserText(value: string, maxLength = MAX_COMMENT_LENGTH):
     sanitized = sanitized.slice(0, maxLength);
   }
 
-  if (containsDangerousMarkup(original)) {
+  if (contieneMarcadoPeligroso(original)) {
     reasons.push("dangerous-markup");
   }
 
-  sanitized = removeDangerousMarkup(sanitized);
+  sanitized = quitarMarcadoPeligroso(sanitized);
 
-  if (hasExcessiveSymbolNoise(sanitized)) {
+  if (tieneRuidoExcesivoSimbolos(sanitized)) {
     reasons.push("excessive-symbol-noise");
-    sanitized = reduceSymbolNoise(sanitized);
+    sanitized = reducirRuidoSimbolos(sanitized);
   }
 
-  if (hasOnlyRepeatedCharacter(normalizeOpenText(sanitized))) {
+  if (tieneSoloCaracterRepetido(normalizarTextoAbierto(sanitized))) {
     reasons.push("repeated-character-noise");
   }
 
-  const escaped = escapeHtml(sanitized).trim();
+  const escaped = escaparHtml(sanitized).trim();
 
   return {
     text: escaped,
@@ -168,7 +249,7 @@ export function sanitizeUserText(value: string, maxLength = MAX_COMMENT_LENGTH):
   };
 }
 
-function containsDangerousMarkup(value: string) {
+function contieneMarcadoPeligroso(value: string) {
   const lower = value.toLowerCase();
 
   return (
@@ -184,7 +265,7 @@ function containsDangerousMarkup(value: string) {
   );
 }
 
-function removeDangerousMarkup(value: string) {
+function quitarMarcadoPeligroso(value: string) {
   return value
     .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
     .replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe>/gi, "")
@@ -194,7 +275,7 @@ function removeDangerousMarkup(value: string) {
     .replace(/javascript\s*:/gi, "");
 }
 
-function escapeHtml(value: string) {
+function escaparHtml(value: string) {
   return value
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -203,7 +284,7 @@ function escapeHtml(value: string) {
     .replace(/'/g, "&#39;");
 }
 
-function hasExcessiveSymbolNoise(value: string) {
+function tieneRuidoExcesivoSimbolos(value: string) {
   const compact = value.replace(/\s/g, "");
   if (compact.length < 12) return false;
 
@@ -214,27 +295,27 @@ function hasExcessiveSymbolNoise(value: string) {
   return symbolCount / compact.length > 0.45;
 }
 
-function reduceSymbolNoise(value: string) {
+function reducirRuidoSimbolos(value: string) {
   return value
     .replace(/[^\p{L}\p{N}\s.,;:¿?¡!()/-]/gu, "")
     .replace(/([.,;:¿?¡!()/-])\1{2,}/g, "$1$1")
     .trim();
 }
 
-export function getLikertAnswers(answers: Answer[]) {
+export function obtenerRespuestasLikert(answers: Answer[]) {
   return answers.filter((answer): answer is LikertAnswer => answer.kind === "likert");
 }
 
-export function getOpenAnswers(answers: Answer[]) {
+export function obtenerRespuestasAbiertas(answers: Answer[]) {
   return answers.filter((answer): answer is OpenAnswer => answer.kind === "open");
 }
 
-export function getAnswerForQuestion(answers: Answer[], questionId: number) {
+export function obtenerRespuestaDePregunta(answers: Answer[], questionId: number) {
   return answers.find((answer) => answer.questionId === questionId);
 }
 
-export function getEditableQuestion(answers: Answer[], searchParams: SearchParams) {
-  const editQuestionId = Number(getParam(searchParams, "editQuestionId"));
+export function obtenerPreguntaEditable(answers: Answer[], searchParams: SearchParams) {
+  const editQuestionId = Number(obtenerParametro(searchParams, "editQuestionId"));
 
   if (!Number.isInteger(editQuestionId)) return null;
   if (!answers.some((answer) => answer.questionId === editQuestionId)) return null;
@@ -242,7 +323,7 @@ export function getEditableQuestion(answers: Answer[], searchParams: SearchParam
   return questions.find((question) => question.id === editQuestionId) ?? null;
 }
 
-function normalizeOpenText(text: string) {
+function normalizarTextoAbierto(text: string) {
   return text
     .toLowerCase()
     .normalize("NFD")
@@ -251,8 +332,8 @@ function normalizeOpenText(text: string) {
     .trim();
 }
 
-function isLowInformationOpenAnswer(text: string) {
-  const normalized = normalizeOpenText(text);
+function esRespuestaAbiertaDeBajaInformacion(text: string) {
+  const normalized = normalizarTextoAbierto(text);
 
   return [
     "no se",
@@ -266,8 +347,8 @@ function isLowInformationOpenAnswer(text: string) {
   ].includes(normalized) || normalized.includes("no lo tengo claro");
 }
 
-function hasUnresolvedDoubtText(text: string) {
-  const normalized = normalizeOpenText(text);
+function tieneTextoDudaSinResolver(text: string) {
+  const normalized = normalizarTextoAbierto(text);
   const unresolvedPhrases = [
     "me cuesta elegir",
     "no se",
@@ -284,8 +365,8 @@ function hasUnresolvedDoubtText(text: string) {
   return unresolvedPhrases.some((phrase) => normalized.includes(phrase));
 }
 
-function hasAbsoluteOrDefensiveTone(text: string) {
-  const normalized = normalizeOpenText(text);
+function tieneTonoAbsolutoODefensivo(text: string) {
+  const normalized = normalizarTextoAbierto(text);
   const absolutePatterns = [
     "soy el mejor",
     "soy la mejor",
@@ -321,14 +402,14 @@ function hasAbsoluteOrDefensiveTone(text: string) {
 
   return (
     absolutePatterns.some((pattern) => normalized.includes(pattern)) ||
-    defensivePatterns.some((pattern) => normalized.includes(normalizeOpenText(pattern))) ||
+    defensivePatterns.some((pattern) => normalized.includes(normalizarTextoAbierto(pattern))) ||
     absoluteWords.length >= 2 ||
     repeatedWords.length >= 3
   );
 }
 
-function hasAggressiveTone(text: string) {
-  const normalized = normalizeOpenText(text);
+function tieneTonoAgresivo(text: string) {
+  const normalized = normalizarTextoAbierto(text);
   const aggressivePatterns = [
     "idiota",
     "imbecil",
@@ -346,13 +427,13 @@ function hasAggressiveTone(text: string) {
   return aggressivePatterns.some((pattern) => normalized.includes(pattern));
 }
 
-export function isUsefulComment(comment: string | undefined) {
+export function esComentarioUtil(comment: string | undefined) {
   if (!comment) return false;
 
   const trimmed = comment.trim();
   if (!trimmed) return false;
 
-  const normalized = normalizeOpenText(trimmed);
+  const normalized = normalizarTextoAbierto(trimmed);
   if (!normalized) return false;
 
   const allowedDoubtSignals = [
@@ -393,18 +474,18 @@ export function isUsefulComment(comment: string | undefined) {
     "estupida",
     "mierda",
   ];
-  const repeatedCharactersOnly = hasOnlyRepeatedCharacter(normalized);
+  const repeatedCharactersOnly = tieneSoloCaracterRepetido(normalized);
   const hasLettersOrNumbers = /[a-z0-9]/.test(normalized);
 
   if (!hasLettersOrNumbers || repeatedCharactersOnly) return false;
   if (lowContentPatterns.includes(normalized)) return false;
   if (simpleInsults.includes(normalized)) return false;
-  if (hasAggressiveTone(normalized)) return false;
+  if (tieneTonoAgresivo(normalized)) return false;
 
   return normalized.length >= 4;
 }
 
-function hasOnlyRepeatedCharacter(value: string) {
+function tieneSoloCaracterRepetido(value: string) {
   if (value.length < 3) return false;
 
   const firstCharacter = value[0];
@@ -416,12 +497,12 @@ function hasOnlyRepeatedCharacter(value: string) {
   return true;
 }
 
-export function isClarificationUseful(answer: string) {
-  const normalized = normalizeOpenText(answer);
+export function esAclaracionUtil(answer: string) {
+  const normalized = normalizarTextoAbierto(answer);
 
-  if (!isUsefulComment(answer)) return false;
-  if (isLowInformationOpenAnswer(answer)) return false;
-  if (hasAbsoluteOrDefensiveTone(answer)) return false;
+  if (!esComentarioUtil(answer)) return false;
+  if (esRespuestaAbiertaDeBajaInformacion(answer)) return false;
+  if (tieneTonoAbsolutoODefensivo(answer)) return false;
   if (["depende", "no se", "nose", "no lo se"].includes(normalized)) return false;
 
   const preferenceSignals = [
@@ -448,7 +529,7 @@ export function isClarificationUseful(answer: string) {
     "dedicaría",
   ];
   const hasPreferenceSignal = preferenceSignals.some((signal) =>
-    normalized.includes(normalizeOpenText(signal)),
+    normalized.includes(normalizarTextoAbierto(signal)),
   );
   const clearChoiceSignals = [
     "prefiero",
@@ -461,29 +542,29 @@ export function isClarificationUseful(answer: string) {
     "me motiva mas",
   ];
   const hasClearChoice = clearChoiceSignals.some((signal) =>
-    normalized.includes(normalizeOpenText(signal)),
+    normalized.includes(normalizarTextoAbierto(signal)),
   );
   const hasEnoughContext = normalized.split(/\s+/).length >= 6;
 
-  if (hasUnresolvedDoubtText(answer) && !hasClearChoice) return false;
+  if (tieneTextoDudaSinResolver(answer) && !hasClearChoice) return false;
 
   return hasPreferenceSignal && hasEnoughContext;
 }
 
-export function getNarrativeReliability(comments: string[]) {
-  const usefulComments = comments.filter(isUsefulComment);
+export function obtenerConfiabilidadNarrativa(comments: string[]) {
+  const usefulComments = comments.filter(esComentarioUtil);
   const analysisReliabilityImpact = comments.reduce(
-    (total, comment) => total + analyzeNarrativeText(comment).reliabilityImpact,
+    (total, comment) => total + analizarTextoNarrativo(comment).reliabilityImpact,
     0,
   );
 
   if (usefulComments.length === 0) return "medium";
 
   const lowReliabilityCount = usefulComments.filter((comment) => {
-    const normalized = normalizeOpenText(comment);
+    const normalized = normalizarTextoAbierto(comment);
     const doesNotExplain = normalized.length < 12 && !["no se", "depende"].includes(normalized);
 
-    return hasAbsoluteOrDefensiveTone(comment) || hasAggressiveTone(comment) || doesNotExplain;
+    return tieneTonoAbsolutoODefensivo(comment) || tieneTonoAgresivo(comment) || doesNotExplain;
   }).length;
   const hasRepeatedLowReliabilityPattern = lowReliabilityCount >= 2;
   const onlyLowReliabilityComments = lowReliabilityCount === usefulComments.length;
@@ -503,15 +584,15 @@ export function getNarrativeReliability(comments: string[]) {
   return "high";
 }
 
-function getNarrativeTexts(answers: Answer[]) {
+function obtenerTextosNarrativos(answers: Answer[]) {
   return answers.flatMap((answer) => {
     if (answer.kind === "open") return [answer.text];
     return answer.comment ? [answer.comment] : [];
   });
 }
 
-function getNarrativeAnalysis(answers: Answer[]) {
-  const analyses = getNarrativeTexts(answers).map(analyzeNarrativeText);
+function obtenerAnalisisNarrativo(answers: Answer[]) {
+  const analyses = obtenerTextosNarrativos(answers).map(analizarTextoNarrativo);
 
   return {
     categories: Array.from(new Set(analyses.flatMap((analysis) => analysis.categories))),
@@ -526,17 +607,26 @@ function getNarrativeAnalysis(answers: Answer[]) {
   };
 }
 
-function getNarrativeSemanticFocus(answers: Answer[]) {
+function obtenerFocoSemanticoNarrativo(answers: Answer[]) {
   return Array.from(
     new Set(
-      getNarrativeTexts(answers).flatMap(
-        (text) => analyzeSemanticFocusText(text).semanticFocus,
-      ),
+      answers.flatMap((answer) => {
+        if (answer.kind === "likert") {
+          return answer.comment ? analizarTextoFocoSemantico(answer.comment).semanticFocus : [];
+        }
+
+        if (answer.answerMode === "typed-text") {
+          const analysis = analizarRespuestaLibreVocacional(answer.text);
+          return analysis.usarParaRanking ? analysis.semanticFocus : [];
+        }
+
+        return analizarTextoFocoSemantico(answer.text).semanticFocus;
+      }),
     ),
   );
 }
 
-function buildInitialScores() {
+function construirPuntajesIniciales() {
   return measurableDimensions.reduce(
     (acc, dimension) => ({
       ...acc,
@@ -546,10 +636,10 @@ function buildInitialScores() {
   );
 }
 
-export function getAverages(answers: Answer[]) {
-  const scores = buildInitialScores();
+export function obtenerPromedios(answers: Answer[]) {
+  const scores = construirPuntajesIniciales();
 
-  getLikertAnswers(answers).forEach((answer) => {
+  obtenerRespuestasLikert(answers).forEach((answer) => {
     scores[answer.dimension].total += answer.value;
     scores[answer.dimension].count += 1;
   });
@@ -565,11 +655,11 @@ export function getAverages(answers: Answer[]) {
   );
 }
 
-export function calculateScores(responses: Answer[]) {
-  return getAverages(responses);
+export function calcularPuntajes(responses: Answer[]) {
+  return obtenerPromedios(responses);
 }
 
-export function getTopDimensions(scores: Record<Dimension, number>) {
+export function obtenerDimensionesPrincipales(scores: Record<Dimension, number>) {
   return measurableDimensions
     .map((dimension) => ({
       dimension,
@@ -579,7 +669,7 @@ export function getTopDimensions(scores: Record<Dimension, number>) {
     .sort((a, b) => b.score - a.score);
 }
 
-export function calculateDifferentiationScore(
+export function calcularPuntajeDiferenciacion(
   riasecScores: Pick<Record<Dimension, number>, (typeof riasecDimensions)[number]>,
 ) {
   const highDimensions = riasecDimensions.filter(
@@ -617,8 +707,8 @@ export function calculateDifferentiationScore(
   };
 }
 
-export function getConsistencyScore(responses: Answer[]) {
-  const answersByDimension = getLikertAnswers(responses).reduce(
+export function obtenerPuntajeConsistencia(responses: Answer[]) {
+  const answersByDimension = obtenerRespuestasLikert(responses).reduce(
     (acc, answer) => ({
       ...acc,
       [answer.dimension]: [...(acc[answer.dimension] ?? []), answer.value],
@@ -653,12 +743,12 @@ export function getConsistencyScore(responses: Answer[]) {
   };
 }
 
-function hasVariableDimension(
+function tieneDimensionVariable(
   responses: Answer[],
   dimension: Dimension,
   minimumGap = 2,
 ) {
-  const values = getLikertAnswers(responses)
+  const values = obtenerRespuestasLikert(responses)
     .filter((answer) => answer.dimension === dimension)
     .map((answer) => answer.value);
 
@@ -667,21 +757,84 @@ function hasVariableDimension(
   return Math.max(...values) - Math.min(...values) >= minimumGap;
 }
 
-export function getConflictResolutionStatus(
+function esAclaracionSoloEconomica(text: string) {
+  const analysis = analizarTextoNarrativo(text);
+  const categories = new Set(analysis.categories);
+
+  const hasEconomicConcern = categories.has("economic_concern");
+
+  const hasVocationalMotivation =
+    categories.has("intrinsic_motivation") ||
+    categories.has("technical_motivation") ||
+    categories.has("social_motivation") ||
+    categories.has("creative_motivation") ||
+    categories.has("leadership_motivation") ||
+    categories.has("autonomy") ||
+    categories.has("exploration");
+
+  return hasEconomicConcern && !hasVocationalMotivation;
+}
+
+function esAclaracionSoloProcesoExploratorio(text: string) {
+  const normalized = normalizarTextoAbierto(text);
+
+  const processSignals = [
+    "probar primero",
+    "experiencia corta",
+    "probar con una experiencia",
+    "explorar primero",
+    "ver como me va",
+    "intentarlo un tiempo",
+  ];
+
+  const domainSignals = [
+    "educacion",
+    "ensenar",
+    "salud",
+    "bienestar",
+    "ambiente",
+    "recursos naturales",
+    "plantas",
+    "animales",
+    "diseno",
+    "grafico",
+    "comunicacion",
+    "gestion",
+    "proyectos",
+    "derecho",
+    "tecnologia",
+    "datos",
+    "arquitectura",
+  ];
+
+  const hasProcessSignal = processSignals.some((signal) =>
+    normalized.includes(normalizarTextoAbierto(signal)),
+  );
+  const hasDomainSignal = domainSignals.some((signal) =>
+    normalized.includes(normalizarTextoAbierto(signal)),
+  );
+
+  return hasProcessSignal && !hasDomainSignal;
+}
+
+export function obtenerEstadoResolucionConflicto(
   scores: Record<Dimension, number>,
   responses: Answer[],
 ) {
-  const consistency = getConsistencyScore(responses);
-  const differentiation = calculateDifferentiationScore(scores);
-  const openAnswers = getOpenAnswers(responses);
+  const consistency = obtenerPuntajeConsistencia(responses);
+  const differentiation = calcularPuntajeDiferenciacion(scores);
+  const openAnswers = obtenerRespuestasAbiertas(responses);
   const clarificationAnswers = openAnswers.filter((answer) =>
     ["prioritization", "contradiction", "motivation"].includes(answer.trigger),
   );
-  const narrativeReliability = getNarrativeReliability(
+  const narrativeReliability = obtenerConfiabilidadNarrativa(
     clarificationAnswers.map((answer) => answer.text),
   );
   const usefulClarifications = clarificationAnswers.filter((answer) =>
-    narrativeReliability !== "low" && isClarificationUseful(answer.text),
+    narrativeReliability !== "low" &&
+    esAclaracionUtil(answer.text) &&
+    !esAclaracionSoloEconomica(answer.text) &&
+    !esAclaracionSoloProcesoExploratorio(answer.text),
   );
   const hasConflict =
     differentiation.possibleBroadInterest || consistency.possibleContradiction;
@@ -705,21 +858,21 @@ export function getConflictResolutionStatus(
   };
 }
 
-export function detectContradictions(
+export function detectarContradicciones(
   scores: Record<Dimension, number>,
   responses: Answer[],
 ) {
-  const consistency = getConsistencyScore(responses);
-  const differentiation = calculateDifferentiationScore(scores);
-  const resolution = getConflictResolutionStatus(scores, responses);
-  const topRiasec = getTopDimensions(scores).filter(({ dimension }) =>
+  const consistency = obtenerPuntajeConsistencia(responses);
+  const differentiation = calcularPuntajeDiferenciacion(scores);
+  const resolution = obtenerEstadoResolucionConflicto(scores, responses);
+  const topRiasec = obtenerDimensionesPrincipales(scores).filter(({ dimension }) =>
     riasecDimensions.includes(dimension),
   );
   const highRiasecDimensions = topRiasec.filter(({ score }) => score >= 4);
   const topInterest = topRiasec[0];
   const hasLowTolerance = scores.tolerancia > 0 && scores.tolerancia <= 2;
-  const hasUsefulLikertComment = getLikertAnswers(responses).some((answer) =>
-    isUsefulComment(answer.comment),
+  const hasUsefulLikertComment = obtenerRespuestasLikert(responses).some((answer) =>
+    esComentarioUtil(answer.comment),
   );
   const contradictions: Array<{
     code:
@@ -791,18 +944,18 @@ export function detectContradictions(
   return contradictions;
 }
 
-function getPrimaryProfileForClosing(
+function obtenerPerfilPrincipalParaCierre(
   profileRanking: Array<Profile & { score: number }>,
   scores: Record<Dimension, number>,
 ) {
   return (
     profileRanking.find(
-      (profile) => getStrictCoreStatus(profile, scores).coreMeetsStrictThreshold,
+      (profile) => obtenerEstadoNucleoEstricto(profile, scores).coreMeetsStrictThreshold,
     ) ?? profileRanking[0] ?? null
   );
 }
 
-function getPrimarySemanticFocusGaps(
+function obtenerBrechasFocoSemanticoPrincipal(
   responses: Answer[],
   scores: Record<Dimension, number>,
   profile: Profile | null,
@@ -813,7 +966,7 @@ function getPrimarySemanticFocusGaps(
     (dimension) => scores[dimension] >= CORE_THRESHOLD,
   );
 
-  return getSemanticCoverage(responses, scores).filter(
+  return obtenerCoberturaSemantica(responses, scores).filter(
     (coverage) =>
       coreDimensionsWithSignal.includes(coverage.dimension) &&
       coverage.coverageRatio < MIN_PRIMARY_SEMANTIC_COVERAGE_RATIO &&
@@ -821,7 +974,7 @@ function getPrimarySemanticFocusGaps(
   );
 }
 
-export function getAdaptiveClosingDecision(
+export function obtenerDecisionCierreAdaptativo(
   responses: Answer[],
   scores: Record<Dimension, number>,
   profileRanking: Array<Profile & { score: number }>,
@@ -831,7 +984,7 @@ export function getAdaptiveClosingDecision(
   closingReason: AdaptiveClosingReason;
   primarySemanticGaps: SemanticCoverage[];
 } {
-  const likertCount = getLikertAnswers(responses).length;
+  const likertCount = obtenerRespuestasLikert(responses).length;
 
   if (likertCount < COMMON_BASELINE_QUESTION_COUNT) {
     return {
@@ -849,13 +1002,13 @@ export function getAdaptiveClosingDecision(
     };
   }
 
-  const consistency = getConsistencyScore(responses);
-  const differentiation = calculateDifferentiationScore(scores);
-  const resolution = getConflictResolutionStatus(scores, responses);
+  const consistency = obtenerPuntajeConsistencia(responses);
+  const differentiation = calcularPuntajeDiferenciacion(scores);
+  const resolution = obtenerEstadoResolucionConflicto(scores, responses);
   const strictCoreProfiles = profileRanking.filter(
-    (profile) => getStrictCoreStatus(profile, scores).coreMeetsStrictThreshold,
+    (profile) => obtenerEstadoNucleoEstricto(profile, scores).coreMeetsStrictThreshold,
   );
-  const primaryProfile = getPrimaryProfileForClosing(profileRanking, scores);
+  const primaryProfile = obtenerPerfilPrincipalParaCierre(profileRanking, scores);
   const secondProfile =
     strictCoreProfiles.find((profile) => profile.id !== primaryProfile?.id) ??
     profileRanking.find((profile) => profile.id !== primaryProfile?.id) ??
@@ -865,9 +1018,9 @@ export function getAdaptiveClosingDecision(
     ? primaryScore - secondProfile.score
     : 0;
   const primaryCoreStatus = primaryProfile
-    ? getStrictCoreStatus(primaryProfile, scores)
+    ? obtenerEstadoNucleoEstricto(primaryProfile, scores)
     : { coreMeetsStrictThreshold: false };
-  const primarySemanticGaps = getPrimarySemanticFocusGaps(
+  const primarySemanticGaps = obtenerBrechasFocoSemanticoPrincipal(
     responses,
     scores,
     primaryProfile,
@@ -935,13 +1088,13 @@ export function getAdaptiveClosingDecision(
   };
 }
 
-export function shouldFinishTest(
+export function debeFinalizarTest(
   responses: Answer[],
   scores: Record<Dimension, number>,
   profileRanking: Array<Profile & { score: number }>,
   contradictions: Array<{ severity: "low" | "medium" | "high" }>,
 ) {
-  return getAdaptiveClosingDecision(
+  return obtenerDecisionCierreAdaptativo(
     responses,
     scores,
     profileRanking,
@@ -949,19 +1102,19 @@ export function shouldFinishTest(
   ).shouldFinish;
 }
 
-export function getCurrentQuestionTarget(
+export function obtenerObjetivoPreguntasActual(
   responses: Answer[],
   scores: Record<Dimension, number>,
   profileRanking: Array<Profile & { score: number }>,
   contradictions: Array<{ severity: "low" | "medium" | "high" }>,
 ) {
-  const likertCount = getLikertAnswers(responses).length;
+  const likertCount = obtenerRespuestasLikert(responses).length;
 
   if (likertCount < COMMON_BASELINE_QUESTION_COUNT) {
     return COMMON_BASELINE_QUESTION_COUNT;
   }
 
-  const closingDecision = getAdaptiveClosingDecision(
+  const closingDecision = obtenerDecisionCierreAdaptativo(
     responses,
     scores,
     profileRanking,
@@ -972,9 +1125,9 @@ export function getCurrentQuestionTarget(
     return Math.max(likertCount, COMMON_BASELINE_QUESTION_COUNT);
   }
 
-  const consistency = getConsistencyScore(responses);
-  const differentiation = calculateDifferentiationScore(scores);
-  const resolution = getConflictResolutionStatus(scores, responses);
+  const consistency = obtenerPuntajeConsistencia(responses);
+  const differentiation = calcularPuntajeDiferenciacion(scores);
+  const resolution = obtenerEstadoResolucionConflicto(scores, responses);
   const [firstProfile, secondProfile] = profileRanking;
   const profileGap = firstProfile && secondProfile
     ? firstProfile.score - secondProfile.score
@@ -1016,13 +1169,81 @@ export function getCurrentQuestionTarget(
   return RECOMMENDED_MAX_LIKERT_QUESTIONS;
 }
 
-function scoreProfile(profile: Profile, averages: Record<Dimension, number>) {
+function puntuarPerfil(profile: Profile, averages: Record<Dimension, number>) {
   return Object.entries(profile.dimensions).reduce((total, [dimension, weight]) => {
     return total + averages[dimension as Dimension] * Number(weight);
   }, 0);
 }
 
-export function getProfileCoreStatus(
+function calcularPuntajePatronCombinado(
+  pattern: VocationalCombinedPatternDefinition,
+  averages: Record<Dimension, number>,
+) {
+  const weightTotal = Object.values(pattern.weights).reduce(
+    (total, weight) => total + Number(weight),
+    0,
+  );
+  const weightedScore =
+    Object.entries(pattern.weights).reduce((total, [dimension, weight]) => {
+      return total + (averages[dimension as Dimension] ?? 0) * Number(weight);
+    }, 0) / Math.max(weightTotal, 1);
+  const dimensionsAboveThreshold = pattern.dimensions.filter(
+    (dimension) => (averages[dimension] ?? 0) >= 3.5,
+  ).length;
+  const singleDimensionPenalty = dimensionsAboveThreshold < 2 ? 0.65 : 1;
+
+  return Number((weightedScore * singleDimensionPenalty).toFixed(2));
+}
+
+export function obtenerPatronVocacionalDominante(
+  averages: Record<Dimension, number>,
+): VocationalCombinedPattern | null {
+  const rankedPatterns = combinedPatternDefinitions
+    .map((pattern) => ({
+      ...pattern,
+      score: calcularPuntajePatronCombinado(pattern, averages),
+    }))
+    .sort((left, right) => right.score - left.score);
+  const bestPattern = rankedPatterns[0];
+
+  return bestPattern && bestPattern.score >= 3.35 ? bestPattern : null;
+}
+
+export function obtenerPatronesVocacionalesOrdenados(
+  averages: Record<Dimension, number>,
+): VocationalCombinedPattern[] {
+  return combinedPatternDefinitions
+    .map((pattern) => ({
+      ...pattern,
+      score: calcularPuntajePatronCombinado(pattern, averages),
+    }))
+    .sort((left, right) => right.score - left.score);
+}
+
+function calcularAjustePorPatronCombinado(
+  profile: Profile,
+  patterns: VocationalCombinedPattern[],
+) {
+  const ownPattern = patterns.find((pattern) => pattern.profileId === profile.id);
+  const bestPattern = patterns[0];
+  let adjustment = 0;
+
+  if (ownPattern && ownPattern.score >= 3.35) {
+    adjustment += (ownPattern.score - 3.2) * 2.2;
+  }
+
+  if (bestPattern && bestPattern.profileId === profile.id && bestPattern.score >= 3.5) {
+    adjustment += 1.2;
+  }
+
+  if (ownPattern && ownPattern.score < 3.1) {
+    adjustment -= 1.2;
+  }
+
+  return adjustment;
+}
+
+export function obtenerEstadoNucleoPerfil(
   profile: Profile,
   averages: Record<Dimension, number>,
   threshold = CORE_THRESHOLD,
@@ -1042,7 +1263,7 @@ export function getProfileCoreStatus(
   };
 }
 
-export function getStrictCoreStatus(
+export function obtenerEstadoNucleoEstricto(
   profile: Profile,
   averages: Record<Dimension, number>,
   threshold = CORE_THRESHOLD,
@@ -1057,16 +1278,364 @@ export function getStrictCoreStatus(
   };
 }
 
-function getRankedProfiles(averages: Record<Dimension, number>) {
+function obtenerPerfilesOrdenados(averages: Record<Dimension, number>) {
+  const combinedPatterns = obtenerPatronesVocacionalesOrdenados(averages);
+
   return profiles
     .map((profile) => ({
       ...profile,
-      score: scoreProfile(profile, averages),
+      score:
+        puntuarPerfil(profile, averages) +
+        calcularAjustePorPatronCombinado(profile, combinedPatterns),
     }))
     .sort((a, b) => b.score - a.score);
 }
 
-export function getCompatibleProfiles(
+type RankedProfile = Profile & {
+  score: number;
+  rawScore?: number;
+  coherenceAdjustment?: number;
+  decisionEvidence?: string[];
+};
+
+function obtenerTextoAbiertoNormalizadoParaDecision(answers: Answer[]) {
+  return obtenerRespuestasAbiertas(answers)
+    .map((answer) => {
+      if (answer.answerMode !== "typed-text") {
+        return normalizarTextoAbierto(answer.text);
+      }
+
+      const analysis = analizarRespuestaLibreVocacional(answer.text);
+
+      return analysis.usarParaRanking ? normalizarTextoAbierto(answer.text) : "";
+    })
+    .filter(Boolean)
+    .join(" | ");
+}
+
+function obtenerBonusIncertidumbreNarrativa(
+  answers: Answer[],
+  narrativeAnalysis: ReturnType<typeof obtenerAnalisisNarrativo>,
+) {
+  const text = obtenerTextoAbiertoNormalizadoParaDecision(answers);
+
+  const explicitUncertaintySignal = contieneAlgunaFrase(text, [
+    "me siento confundido",
+    "no se como explicarlo",
+    "no sé cómo explicarlo",
+    "me cuesta elegir",
+    "varias opciones me atraen",
+    "no identifico que carrera encaja",
+    "no identifico qué carrera encaja",
+    "no tengo claro",
+    "todavia no se",
+    "todavía no sé",
+  ]);
+
+  const patternUncertaintySignal =
+    narrativeAnalysis.categories.includes("uncertainty");
+
+  if (!explicitUncertaintySignal && !patternUncertaintySignal) {
+    return 0;
+  }
+
+  const clarityImpactBonus = Math.abs(Math.min(0, narrativeAnalysis.clarityImpact)) * 2;
+
+  return Math.min(40, Math.max(25, clarityImpactBonus));
+}
+
+function contieneAlgunaFrase(text: string, phrases: string[]) {
+  return phrases.some((phrase) => text.includes(normalizarTextoAbierto(phrase)));
+}
+
+function calcularAjusteCoherenciaPerfil(
+  profile: Profile & { score: number },
+  answers: Answer[],
+  averages: Record<Dimension, number>,
+) {
+  const text = obtenerTextoAbiertoNormalizadoParaDecision(answers);
+  let adjustment = 0;
+  const evidence: string[] = [];
+
+  const technicalToolsSignal = contieneAlgunaFrase(text, [
+    "usar instrumentos maquinas o herramientas tecnicas",
+    "usar instrumentos, maquinas o herramientas tecnicas",
+    "herramientas tecnicas",
+    "sistemas fisicos",
+    "probar ajustar o mejorar objetos herramientas o sistemas fisicos",
+    "comprender como funcionan cosas o sistemas",
+  ]);
+
+  const dataAnalysisSignal = contieneAlgunaFrase(text, [
+    "analizar datos numericos patrones o tendencias",
+    "datos numericos",
+    "patrones o tendencias",
+    "analizar informacion confiable",
+    "investigar y descubrir informacion",
+  ]);
+  const spatialDesignSignal = contieneAlgunaFrase(text, [
+    "disenar o mejorar espacios productos muebles o prototipos",
+    "disenar espacios fisicos considerando forma funcion y experiencia",
+    "disenar espacios fisicos",
+    "espacios fisicos ambientes o distribuciones funcionales para personas",
+    "disenar ambientes interiores objetos o espacios funcionales",
+  ]);
+
+  const communitySignal = contieneAlgunaFrase(text, [
+    "intervenir en problemas sociales o comunitarios",
+    "problemas sociales",
+    "problemas comunitarios",
+    "comunidad",
+    "trabajo social",
+    "desarrollo comunitario",
+  ]);
+
+  const helpPeopleSignal = contieneAlgunaFrase(text, [
+    "ayudar a otras personas",
+    "ayudar y acompanar personas",
+    "escuchar orientar o acompanar",
+    "brindar apoyo",
+    "apoyo humano",
+    "acompanar procesos personales",
+  ]);
+
+  const teachingSignal = contieneAlgunaFrase(text, [
+    "ensenar",
+    "explicar temas",
+    "facilitar el aprendizaje",
+    "educacion",
+  ]);
+
+  const businessSignal = contieneAlgunaFrase(text, [
+    "emprender un negocio",
+    "vender una propuesta",
+    "negocio",
+    "ventas",
+    "coordinar un proyecto",
+  ]);
+
+  const creativeSignal = contieneAlgunaFrase(text, [
+    "crear propuestas innovadoras",
+    "crear soluciones comunicativas",
+    "disenar",
+    "contenido visual",
+    "contenido narrativo",
+  ]);
+
+  const hasSocialDecisionSignal =
+    communitySignal || helpPeopleSignal || teachingSignal;
+
+  const hasTechnicalDecisionSignal =
+    technicalToolsSignal || dataAnalysisSignal || spatialDesignSignal;
+
+  switch (profile.id) {
+    case "educacion-ciencias-sociales": {
+      if (communitySignal) {
+        adjustment += 5;
+        evidence.push("prioridad comunitaria/social");
+      }
+
+      if (helpPeopleSignal) {
+        adjustment += 4;
+        evidence.push("prioridad declarada de ayuda a personas");
+      }
+
+      if (teachingSignal) {
+        adjustment += 3;
+        evidence.push("señal educativa");
+      }
+
+      if (averages.social >= 4 && hasSocialDecisionSignal) {
+        adjustment += 1.5;
+        evidence.push("Social alto confirmado por elección guiada");
+      }
+
+      if (dataAnalysisSignal && communitySignal) {
+        adjustment += 0.8;
+        evidence.push("análisis aplicado a fenómenos sociales");
+      }
+
+      break;
+    }
+
+    case "salud-apoyo-humano": {
+      if (helpPeopleSignal) {
+        adjustment += 3;
+        evidence.push("apoyo directo a personas");
+      }
+
+      if (communitySignal) {
+        adjustment += 1.8;
+        evidence.push("intervención social/comunitaria");
+      }
+
+      if (teachingSignal) {
+        adjustment += 0.8;
+        evidence.push("orientación o explicación a personas");
+      }
+
+      if (averages.amabilidad > 0 && averages.amabilidad < 3) {
+        adjustment -= 1;
+        evidence.push("amabilidad no suficientemente alta para cuidado directo");
+      }
+
+      break;
+    }
+
+    case "ciencia-datos-investigacion": {
+      if (dataAnalysisSignal) {
+        adjustment += 3;
+        evidence.push("preferencia explícita por datos, patrones o tendencias");
+      }
+
+      if (spatialDesignSignal) {
+        adjustment -= 3;
+        evidence.push("la elección específica apunta a diseño espacial/prototipado, no a datos como centro");
+      }
+
+      if (averages.convencional <= 2 && averages.responsabilidad <= 2.5) {
+        adjustment -= 3;
+        evidence.push("baja afinidad con orden, revisión y seguimiento sostenido");
+      }
+
+      if (communitySignal) {
+        adjustment += 1.2;
+        evidence.push("investigación aplicada a problemas sociales");
+      }
+
+      if (technicalToolsSignal) {
+        adjustment += 0.4;
+        evidence.push("señal técnica secundaria");
+      }
+
+      break;
+    }
+
+    case "ingenieria-tecnologia": {
+      if (spatialDesignSignal) {
+        adjustment += 2;
+        evidence.push("diseño aplicado, espacios o prototipado");
+      }
+
+      if (technicalToolsSignal) {
+        adjustment += 1.8;
+        evidence.push("uso de herramientas o sistemas técnicos");
+      }
+
+      if (dataAnalysisSignal) {
+        adjustment += 0.8;
+        evidence.push("análisis de datos como señal técnica secundaria");
+      }
+
+      if (communitySignal) {
+        adjustment -= 2.5;
+        evidence.push("la elección social/comunitaria contradice ingeniería como ruta principal");
+      }
+
+      if (helpPeopleSignal) {
+        adjustment -= 1.8;
+        evidence.push("la prioridad de ayuda humana no apunta a ingeniería como centro");
+      }
+
+      if (averages.social >= averages.realista + 0.5 && hasSocialDecisionSignal) {
+        adjustment -= 1.2;
+        evidence.push("Social domina sobre Realista en la decisión final");
+      }
+
+      if (!hasTechnicalDecisionSignal && averages.realista < 4) {
+        adjustment -= 2;
+        evidence.push("núcleo técnico insuficiente");
+      }
+
+      break;
+    }
+
+    case "negocios-gestion": {
+      if (businessSignal) {
+        adjustment += 2.5;
+        evidence.push("emprendimiento o venta");
+      }
+
+      if (communitySignal) {
+        adjustment += 0.8;
+        evidence.push("gestión aplicada a problemas sociales");
+      }
+
+      if (helpPeopleSignal && !businessSignal) {
+        adjustment -= 0.5;
+        evidence.push("ayuda humana pesa más que gestión");
+      }
+
+      break;
+    }
+
+    case "administracion-finanzas": {
+      if (businessSignal) {
+        adjustment += 0.8;
+        evidence.push("señal de negocio");
+      }
+
+      if (dataAnalysisSignal) {
+        adjustment += 0.5;
+        evidence.push("orden/análisis de datos");
+      }
+
+      if (helpPeopleSignal) {
+        adjustment -= 1;
+        evidence.push("prioridad humana no apunta a finanzas/operación como centro");
+      }
+
+      break;
+    }
+
+    case "arte-comunicacion-diseno": {
+      if (spatialDesignSignal) {
+        adjustment += 5;
+        evidence.push("elección específica por diseño espacial, objetos o prototipos");
+      }
+
+      if (creativeSignal) {
+        adjustment += 1.2;
+        evidence.push("señal creativa");
+      }
+
+      if (averages.artistico < 2) {
+        adjustment -= 2;
+        evidence.push("interés artístico bajo");
+      }
+
+      break;
+    }
+  }
+
+  return {
+    adjustment,
+    evidence,
+  };
+}
+
+function reordenarPerfilesPorCoherencia(
+  ranked: Array<Profile & { score: number }>,
+  answers: Answer[],
+  averages: Record<Dimension, number>,
+): RankedProfile[] {
+  return ranked
+    .map((profile) => {
+      const coherence = calcularAjusteCoherenciaPerfil(profile, answers, averages);
+      const adjustedScore = profile.score + coherence.adjustment;
+
+      return {
+        ...profile,
+        rawScore: profile.score,
+        score: Number(adjustedScore.toFixed(2)),
+        coherenceAdjustment: Number(coherence.adjustment.toFixed(2)),
+        decisionEvidence: coherence.evidence,
+      };
+    })
+    .sort((a, b) => b.score - a.score);
+}
+
+export function obtenerPerfilesCompatibles(
   profileRanking: Array<Profile & { score: number }>,
   mainProfileId: string,
   scoreGap = 2,
@@ -1078,7 +1647,7 @@ export function getCompatibleProfiles(
   );
 }
 
-export function getNearbyProfiles(
+export function obtenerPerfilesCercanos(
   profileRanking: Array<Profile & { score: number }>,
   gap = NEARBY_PROFILE_GAP,
 ) {
@@ -1087,7 +1656,7 @@ export function getNearbyProfiles(
   return profileRanking.filter((profile) => topScore - profile.score <= gap);
 }
 
-function getQuestionSemanticFocusByDimension(dimension: Dimension) {
+function obtenerFocoSemanticoPreguntaPorDimension(dimension: Dimension) {
   return Array.from(
     new Set(
       questions
@@ -1097,14 +1666,14 @@ function getQuestionSemanticFocusByDimension(dimension: Dimension) {
   );
 }
 
-export function getSemanticCoverage(
+export function obtenerCoberturaSemantica(
   answers: Answer[],
-  averages = getAverages(answers),
+  averages = obtenerPromedios(answers),
 ) {
   const answeredQuestionIds = new Set(answers.map((answer) => answer.questionId));
 
   return measurableDimensions.map((dimension) => {
-    const expectedFocus = getQuestionSemanticFocusByDimension(dimension);
+    const expectedFocus = obtenerFocoSemanticoPreguntaPorDimension(dimension);
     const exploredFocus = Array.from(
       new Set(
         questions
@@ -1131,11 +1700,11 @@ export function getSemanticCoverage(
   }) satisfies SemanticCoverage[];
 }
 
-function getMissingSemanticFocus(
+function obtenerFocoSemanticoFaltante(
   answers: Answer[],
   averages: Record<Dimension, number>,
 ) {
-  return getSemanticCoverage(answers, averages).filter(
+  return obtenerCoberturaSemantica(answers, averages).filter(
     (coverage) =>
       averages[coverage.dimension] >= SEMANTIC_FOCUS_THRESHOLD &&
       coverage.missingFocus.length > 0 &&
@@ -1143,14 +1712,14 @@ function getMissingSemanticFocus(
   );
 }
 
-export function getAdaptiveDiagnostics(
+export function obtenerDiagnosticosAdaptativos(
   answers: Answer[],
-  averages = getAverages(answers),
-  profileRanking = getRankedProfiles(averages),
+  averages = obtenerPromedios(answers),
+  profileRanking = obtenerPerfilesOrdenados(averages),
 ): AdaptiveDiagnostics {
-  const likertCount = getLikertAnswers(answers).length;
-  const differentiation = calculateDifferentiationScore(averages);
-  const nearbyProfiles = getNearbyProfiles(profileRanking);
+  const likertCount = obtenerRespuestasLikert(answers).length;
+  const differentiation = calcularPuntajeDiferenciacion(averages);
+  const nearbyProfiles = obtenerPerfilesCercanos(profileRanking);
   const highUncertainty =
     averages.incertidumbre >= 4 ||
     averages.presion >= 4 ||
@@ -1169,16 +1738,16 @@ export function getAdaptiveDiagnostics(
     hasNearbyProfiles ||
     hasBroadInterestPattern;
   const weakCoreProfileIds = nearbyProfiles
-    .filter((profile) => !getStrictCoreStatus(profile, averages).coreMeetsStrictThreshold)
+    .filter((profile) => !obtenerEstadoNucleoEstricto(profile, averages).coreMeetsStrictThreshold)
     .map((profile) => profile.id);
-  const missingSemanticFocus = getMissingSemanticFocus(answers, averages);
+  const missingSemanticFocus = obtenerFocoSemanticoFaltante(answers, averages);
   const topProfileHasWeakCore = Boolean(
     topProfile && weakCoreProfileIds.includes(topProfile.id),
   );
   const needsSemanticDeepening = missingSemanticFocus.length > 0;
   const needsCoreDeepening = weakCoreProfileIds.length > 0;
-  const contradictions = detectContradictions(averages, answers);
-  const closingDecision = getAdaptiveClosingDecision(
+  const contradictions = detectarContradicciones(averages, answers);
+  const closingDecision = obtenerDecisionCierreAdaptativo(
     answers,
     averages,
     profileRanking,
@@ -1229,24 +1798,42 @@ export function getAdaptiveDiagnostics(
   };
 }
 
-export function getBestProfile(answers: Answer[]) {
-  const averages = getAverages(answers);
-  const ranked = getRankedProfiles(averages);
+export function obtenerMejorPerfil(answers: Answer[]) {
+  const averages = obtenerPromedios(answers);
+  const combinedPattern = obtenerPatronVocacionalDominante(averages);
+
+  const rawRanked = obtenerPerfilesOrdenados(averages);
+  const ranked = reordenarPerfilesPorCoherencia(rawRanked, answers, averages);
 
   const strictCoreRanked = ranked.filter(
-    (profile) => getStrictCoreStatus(profile, averages).coreMeetsStrictThreshold,
+    (profile) => obtenerEstadoNucleoEstricto(profile, averages).coreMeetsStrictThreshold,
   );
+
   const lowCoreConfidence = strictCoreRanked.length === 0;
-  const best = strictCoreRanked[0] ?? ranked[0];
-  const second = ranked.find((profile) => profile.id !== best.id) ?? ranked[1];
+
+const strictBest = strictCoreRanked[0] ?? null;
+const topCoherentProfile = ranked[0] ?? null;
+
+const shouldUseCoherenceOverride =
+  Boolean(topCoherentProfile) &&
+  Boolean(strictBest) &&
+  (topCoherentProfile?.coherenceAdjustment ?? 0) >= 6 &&
+  (topCoherentProfile?.score ?? 0) >= (strictBest?.score ?? 0) + 1;
+
+const best = shouldUseCoherenceOverride
+  ? topCoherentProfile!
+  : strictBest ?? ranked[0];
+
+const second = ranked.find((profile) => profile.id !== best.id) ?? ranked[1] ?? best;
   const coreRejectedProfiles = ranked.filter(
-    (profile) => !getStrictCoreStatus(profile, averages).coreMeetsStrictThreshold,
+    (profile) => !obtenerEstadoNucleoEstricto(profile, averages).coreMeetsStrictThreshold,
   );
-  const differentiation = calculateDifferentiationScore(averages);
-  const resolution = getConflictResolutionStatus(averages, answers);
-  const narrativeReliability = getNarrativeReliability(getNarrativeTexts(answers));
+  const differentiation = calcularPuntajeDiferenciacion(averages);
+  const resolution = obtenerEstadoResolucionConflicto(averages, answers);
+  const narrativeAnalysis = obtenerAnalisisNarrativo(answers);
+  const narrativeReliability = obtenerConfiabilidadNarrativa(obtenerTextosNarrativos(answers));
   const narrativePenalty = narrativeReliability === "low" ? 12 : 0;
-  const earlyFinishPenalty = getLikertAnswers(answers).length < 15 ? 5 : 0;
+  const earlyFinishPenalty = obtenerRespuestasLikert(answers).length < 15 ? 5 : 0;
   const broadInterestPenalty = differentiation.broadInterestPattern
     ? resolution.status === "resolved"
       ? 10
@@ -1261,6 +1848,10 @@ export function getBestProfile(answers: Answer[]) {
   const uncertaintyPenalty = averages.incertidumbre * 4;
   const pressurePenalty = averages.presion * 2;
   const neuroticismPenalty = averages.neuroticismo * 1.5;
+  const narrativeUncertaintyBonus = obtenerBonusIncertidumbreNarrativa(
+    answers,
+    narrativeAnalysis,
+  );
   const confidence = Math.min(
     96,
     Math.max(
@@ -1271,15 +1862,19 @@ export function getBestProfile(answers: Answer[]) {
     differentiation.clarityPenalty -
     broadInterestPenalty -
     narrativePenalty -
+    narrativeUncertaintyBonus * 0.5 -
     contradictionPenalty -
     earlyFinishPenalty;
   const profileClarity = Math.max(35, confidence);
   const indicators: ResultIndicators = {
     profileClarity,
-    vocationalUncertainty: Math.min(100, Math.max(0, averages.incertidumbre * 20)),
+    vocationalUncertainty: Math.min(
+      100,
+      Math.max(0, averages.incertidumbre * 20 + narrativeUncertaintyBonus),
+    ),
     externalPressure: Math.min(100, Math.max(0, averages.presion * 20)),
   };
-  const validationObservation: ValidationObservation = getValidationObservation(answers);
+  const validationObservation: ValidationObservation = obtenerObservacionValidacion(answers);
 
   return {
     best,
@@ -1287,15 +1882,16 @@ export function getBestProfile(answers: Answer[]) {
     confidence: profileClarity,
     indicators,
     averages,
-    traditionalBest: ranked[0],
+    traditionalBest: rawRanked[0],
+    combinedPattern,
     lowCoreConfidence,
     coreRejectedProfiles,
     validationObservation,
   };
 }
 
-function getValidationObservation(answers: Answer[]): ValidationObservation {
-  const openObservations = getOpenAnswers(answers)
+function obtenerObservacionValidacion(answers: Answer[]): ValidationObservation {
+  const openObservations = obtenerRespuestasAbiertas(answers)
     .map((answer) => ({
       careerReference: answer.careerReference,
       observedMismatch: answer.observedMismatch,
@@ -1308,12 +1904,31 @@ function getValidationObservation(answers: Answer[]): ValidationObservation {
   return openObservations[0] ?? {};
 }
 
-function getTriggeredOpenQuestion(answers: Answer[]) {
-  const averages = getAverages(answers);
-  const usedTriggers = new Set(getOpenAnswers(answers).map((answer) => answer.trigger));
-  const openCount = getOpenAnswers(answers).length;
-  const likertCount = getLikertAnswers(answers).length;
-  const resolution = getConflictResolutionStatus(averages, answers);
+function obtenerPreguntaPorRespuesta(answer: Answer) {
+  return questions.find((question) => question.id === answer.questionId);
+}
+
+function esRespuestaEleccionForzada(answer: Answer) {
+  if (answer.kind !== "open") return false;
+
+  return obtenerPreguntaPorRespuesta(answer)?.scaleType === "forced_choice";
+}
+
+function obtenerRespuestasAbiertasNarrativas(answers: Answer[]) {
+  return obtenerRespuestasAbiertas(answers).filter((answer) => !esRespuestaEleccionForzada(answer));
+}
+
+function obtenerRespuestasEleccionForzada(answers: Answer[]) {
+  return obtenerRespuestasAbiertas(answers).filter(esRespuestaEleccionForzada);
+}
+
+function obtenerPreguntaAbiertaActivada(answers: Answer[]) {
+  const averages = obtenerPromedios(answers);
+  const narrativeOpenAnswers = obtenerRespuestasAbiertasNarrativas(answers);
+  const usedTriggers = new Set(narrativeOpenAnswers.map((answer) => answer.trigger));
+  const openCount = narrativeOpenAnswers.length;
+  const likertCount = obtenerRespuestasLikert(answers).length;
+  const resolution = obtenerEstadoResolucionConflicto(averages, answers);
 
   if (openCount >= maxOpenQuestions || likertCount < 8) {
     return null;
@@ -1324,7 +1939,7 @@ function getTriggeredOpenQuestion(answers: Answer[]) {
   }
 
   const topRiasecAverage = Math.max(...riasecDimensions.map((dimension) => averages[dimension]));
-  const differentiation = calculateDifferentiationScore(averages);
+  const differentiation = calcularPuntajeDiferenciacion(averages);
   const triggers: Array<NonNullable<Question["trigger"]>> = [];
 
   if (differentiation.possibleBroadInterest) triggers.push("prioritization");
@@ -1340,27 +1955,56 @@ function getTriggeredOpenQuestion(answers: Answer[]) {
   return questions.find((question) => question.kind === "open" && question.trigger === nextTrigger) ?? null;
 }
 
-function hasNearbyPair(nearbyProfileIds: string[], first: string, second: string) {
+function tieneParCercano(nearbyProfileIds: string[], first: string, second: string) {
   return nearbyProfileIds.includes(first) && nearbyProfileIds.includes(second);
 }
 
-function getTriggeredContrastQuestion(answers: Answer[]) {
-  const averages = getAverages(answers);
-  const openCount = getOpenAnswers(answers).length;
-  const usedQuestionIds = new Set(answers.map((answer) => answer.questionId));
-  const narrativeSemanticFocus = getNarrativeSemanticFocus(answers);
+function necesitaDesempatePorInteresesAmplios(
+  averages: Record<Dimension, number>,
+  answers: Answer[],
+) {
+  const highRiasecCount = riasecDimensions.filter(
+    (dimension) => averages[dimension] >= 4,
+  ).length;
+  const alreadyAskedBroadTieBreaker = answers.some(
+    (answer) => answer.questionId === 309,
+  );
 
-  if (openCount >= maxOpenQuestions) {
+  return (
+    highRiasecCount >= 5 &&
+    averages.incertidumbre >= 4 &&
+    !alreadyAskedBroadTieBreaker
+  );
+}
+
+function obtenerPreguntaContrasteActivada(answers: Answer[]) {
+  const averages = obtenerPromedios(answers);
+  const forcedChoiceCount = obtenerRespuestasEleccionForzada(answers).filter(
+    (answer) => answer.trigger === "contrast" || answer.questionId >= 300,
+  ).length;
+  const usedQuestionIds = new Set(answers.map((answer) => answer.questionId));
+  const narrativeSemanticFocus = obtenerFocoSemanticoNarrativo(answers);
+  const broadTieBreakerQuestion = questions.find((question) => question.id === 309);
+
+  if (
+    necesitaDesempatePorInteresesAmplios(averages, answers) &&
+    broadTieBreakerQuestion &&
+    !usedQuestionIds.has(broadTieBreakerQuestion.id)
+  ) {
+    return broadTieBreakerQuestion;
+  }
+
+  if (forcedChoiceCount >= maxForcedChoiceQuestions) {
     return null;
   }
 
-  const diagnostics = getAdaptiveDiagnostics(
+  const diagnostics = obtenerDiagnosticosAdaptativos(
     answers,
     averages,
-    getRankedProfiles(averages),
+    obtenerPerfilesOrdenados(averages),
   );
   const hasNearbyProfiles = diagnostics.nearbyProfileIds.length > 1;
-  const semanticCoverage = getSemanticCoverage(answers, averages);
+  const semanticCoverage = obtenerCoberturaSemantica(answers, averages);
   const highDimensionSemanticGaps = semanticCoverage.filter(
     (coverage) =>
       averages[coverage.dimension] >= SEMANTIC_FOCUS_THRESHOLD &&
@@ -1387,22 +2031,59 @@ function getTriggeredContrastQuestion(answers: Answer[]) {
     narrativeSemanticFocus.includes("visual-spatial-creativity") ||
     narrativeSemanticFocus.includes("applied-design") ||
     narrativeSemanticFocus.includes("spatial-organization");
+  const hasAppliedTechnicalAmbiguity =
+    nearbyProfileIds.includes("ingenieria-tecnologia") ||
+    nearbyProfileIds.includes("ciencia-datos-investigacion") ||
+    nearbyProfileIds.includes("arte-comunicacion-diseno") ||
+    nearbyProfileIds.includes("administracion-finanzas");
   const candidates = [
+    hasAppliedTechnicalAmbiguity ? 201 : null,
+    hasAppliedTechnicalAmbiguity ? 202 : null,
+    hasAppliedTechnicalAmbiguity ? 203 : null,
+    (nearbyProfileIds.includes("salud-apoyo-humano") ||
+      nearbyProfileIds.includes("educacion-ciencias-sociales") ||
+      missingDimensions.has("social"))
+      ? 204
+      : null,
+    (nearbyProfileIds.includes("negocios-gestion") ||
+      nearbyProfileIds.includes("educacion-ciencias-sociales") ||
+      missingDimensions.has("emprendedor"))
+      ? 205
+      : null,
+    (nearbyProfileIds.includes("administracion-finanzas") ||
+      nearbyProfileIds.includes("negocios-gestion") ||
+      missingDimensions.has("convencional"))
+      ? 206
+      : null,
     (nearbyProfileIds.includes("arte-comunicacion-diseno") && missingDimensions.has("artistico")) ||
     hasSpatialDesignSignal
-      ? 202
+      ? 301
       : null,
-    hasNearbyPair(nearbyProfileIds, "ingenieria-tecnologia", "ciencia-datos-investigacion")
-      ? 201
+    tieneParCercano(nearbyProfileIds, "ingenieria-tecnologia", "ciencia-datos-investigacion")
+      ? 302
       : null,
-    hasNearbyPair(nearbyProfileIds, "salud-apoyo-humano", "educacion-ciencias-sociales")
-      ? 203
+    nearbyProfileIds.includes("arte-comunicacion-diseno") && missingDimensions.has("artistico")
+      ? 303
+      : null,
+    tieneParCercano(nearbyProfileIds, "salud-apoyo-humano", "educacion-ciencias-sociales")
+      ? 304
       : null,
     nearbyProfileIds.includes("negocios-gestion") &&
     (nearbyProfileIds.includes("educacion-ciencias-sociales") ||
       nearbyProfileIds.includes("salud-apoyo-humano") ||
       missingDimensions.has("emprendedor"))
-      ? 204
+      ? 305
+      : null,
+    tieneParCercano(nearbyProfileIds, "administracion-finanzas", "ingenieria-tecnologia")
+      ? 306
+      : null,
+    nearbyProfileIds.includes("salud-apoyo-humano") &&
+    (nearbyProfileIds.includes("ciencia-datos-investigacion") || missingDimensions.has("investigativo"))
+      ? 307
+      : null,
+    nearbyProfileIds.includes("educacion-ciencias-sociales") &&
+    (nearbyProfileIds.includes("ciencia-datos-investigacion") || missingDimensions.has("social"))
+      ? 308
       : null,
   ].filter((id): id is number => Boolean(id));
 
@@ -1413,7 +2094,7 @@ function getTriggeredContrastQuestion(answers: Answer[]) {
   );
 }
 
-function questionMatchesThemeBlock(question: Question, block: AdaptiveThemeBlock) {
+function preguntaCoincideConBloqueTematico(question: Question, block: AdaptiveThemeBlock) {
   const questionFocus = question.semanticFocus ?? [];
 
   return Boolean(
@@ -1424,18 +2105,18 @@ function questionMatchesThemeBlock(question: Question, block: AdaptiveThemeBlock
   );
 }
 
-function getThemeBlocksForQuestion(question: Question) {
-  return adaptiveThemeBlocks.filter((block) => questionMatchesThemeBlock(question, block));
+function obtenerBloquesTematicosDePregunta(question: Question) {
+  return adaptiveThemeBlocks.filter((block) => preguntaCoincideConBloqueTematico(question, block));
 }
 
-function getRecentThemeBlock(likertAnswers: LikertAnswer[]) {
+function obtenerBloqueTematicoReciente(likertAnswers: LikertAnswer[]) {
   const recentPostBaselineAnswers = [...likertAnswers]
     .filter((answer) => answer.questionId > COMMON_BASELINE_QUESTION_COUNT)
     .reverse();
 
   for (const answer of recentPostBaselineAnswers) {
     const question = questions.find((item) => item.id === answer.questionId);
-    const block = question ? getThemeBlocksForQuestion(question)[0] : undefined;
+    const block = question ? obtenerBloquesTematicosDePregunta(question)[0] : undefined;
 
     if (block) return block;
   }
@@ -1443,17 +2124,17 @@ function getRecentThemeBlock(likertAnswers: LikertAnswer[]) {
   return null;
 }
 
-function getAnsweredThemeBlockCount(likertAnswers: LikertAnswer[], block: AdaptiveThemeBlock) {
+function obtenerCantidadRespuestasBloqueTematico(likertAnswers: LikertAnswer[], block: AdaptiveThemeBlock) {
   return likertAnswers.filter((answer) => {
     if (answer.questionId <= COMMON_BASELINE_QUESTION_COUNT) return false;
 
     const question = questions.find((item) => item.id === answer.questionId);
 
-    return question ? questionMatchesThemeBlock(question, block) : false;
+    return question ? preguntaCoincideConBloqueTematico(question, block) : false;
   }).length;
 }
 
-function getThemeBlockScore(
+function obtenerPuntajeBloqueTematico(
   block: AdaptiveThemeBlock,
   averages: Record<Dimension, number>,
   narrativeSemanticFocus: string[],
@@ -1482,7 +2163,7 @@ function getThemeBlockScore(
   return dimensionAverage + narrativeBoost + semanticGapBoost + contextBoost;
 }
 
-function getDominantThemeBlock(
+function obtenerBloqueTematicoDominante(
   averages: Record<Dimension, number>,
   narrativeSemanticFocus: string[],
   missingSemanticFocus: SemanticCoverage[],
@@ -1491,22 +2172,22 @@ function getDominantThemeBlock(
 ) {
   return [...adaptiveThemeBlocks]
     .sort((a, b) => {
-      const aCount = getAnsweredThemeBlockCount(likertAnswers, a);
-      const bCount = getAnsweredThemeBlockCount(likertAnswers, b);
+      const aCount = obtenerCantidadRespuestasBloqueTematico(likertAnswers, a);
+      const bCount = obtenerCantidadRespuestasBloqueTematico(likertAnswers, b);
       const aSaturationPenalty = aCount >= MAX_THEME_BLOCK_QUESTIONS ? 2 : 0;
       const bSaturationPenalty = bCount >= MAX_THEME_BLOCK_QUESTIONS ? 2 : 0;
       const aScore =
-        getThemeBlockScore(a, averages, narrativeSemanticFocus, missingSemanticFocus, diagnostics) -
+        obtenerPuntajeBloqueTematico(a, averages, narrativeSemanticFocus, missingSemanticFocus, diagnostics) -
         aSaturationPenalty;
       const bScore =
-        getThemeBlockScore(b, averages, narrativeSemanticFocus, missingSemanticFocus, diagnostics) -
+        obtenerPuntajeBloqueTematico(b, averages, narrativeSemanticFocus, missingSemanticFocus, diagnostics) -
         bSaturationPenalty;
 
       return bScore - aScore;
     })[0] ?? null;
 }
 
-function getNextQuestionFromThemeBlock(
+function obtenerSiguientePreguntaDeBloqueTematico(
   block: AdaptiveThemeBlock,
   unansweredLikert: Question[],
   recentDimensions: Dimension[],
@@ -1519,7 +2200,7 @@ function getNextQuestionFromThemeBlock(
         recentDimensions.filter((dimension) => dimension === question.dimension).length < 2,
     );
   const blockQuestions = unansweredLikert.filter(
-    (question) => questionMatchesThemeBlock(question, block) && isNotTooRecent(question),
+    (question) => preguntaCoincideConBloqueTematico(question, block) && isNotTooRecent(question),
   );
   const missingFocusQuestion = blockQuestions.find((question) =>
     missingSemanticFocus.some(
@@ -1539,7 +2220,7 @@ function getNextQuestionFromThemeBlock(
   );
 }
 
-function getThematicBlockQuestion(
+function obtenerPreguntaBloqueTematico(
   answers: Answer[],
   unansweredLikert: Question[],
   averages: Record<Dimension, number>,
@@ -1548,20 +2229,20 @@ function getThematicBlockQuestion(
   recentDimensions: Dimension[],
   dimensionCounts: Partial<Record<Dimension, number>>,
 ) {
-  const likertAnswers = getLikertAnswers(answers);
-  const recentBlock = getRecentThemeBlock(likertAnswers);
+  const likertAnswers = obtenerRespuestasLikert(answers);
+  const recentBlock = obtenerBloqueTematicoReciente(likertAnswers);
   const hasSwitchReason =
     diagnostics.lowDifferentiation ||
     diagnostics.highUncertainty ||
     diagnostics.missingSemanticFocus.length > 0;
 
   if (recentBlock) {
-    const recentBlockCount = getAnsweredThemeBlockCount(likertAnswers, recentBlock);
+    const recentBlockCount = obtenerCantidadRespuestasBloqueTematico(likertAnswers, recentBlock);
     const shouldContinueRecentBlock =
       recentBlockCount < MAX_THEME_BLOCK_QUESTIONS &&
       (recentBlockCount < MIN_THEME_BLOCK_QUESTIONS || !hasSwitchReason);
     const recentBlockQuestion = shouldContinueRecentBlock
-      ? getNextQuestionFromThemeBlock(
+      ? obtenerSiguientePreguntaDeBloqueTematico(
           recentBlock,
           unansweredLikert,
           recentDimensions,
@@ -1573,7 +2254,7 @@ function getThematicBlockQuestion(
     if (recentBlockQuestion) return recentBlockQuestion;
   }
 
-  const dominantBlock = getDominantThemeBlock(
+  const dominantBlock = obtenerBloqueTematicoDominante(
     averages,
     narrativeSemanticFocus,
     diagnostics.missingSemanticFocus,
@@ -1582,7 +2263,7 @@ function getThematicBlockQuestion(
   );
 
   return dominantBlock
-    ? getNextQuestionFromThemeBlock(
+    ? obtenerSiguientePreguntaDeBloqueTematico(
         dominantBlock,
         unansweredLikert,
         recentDimensions,
@@ -1592,25 +2273,95 @@ function getThematicBlockQuestion(
     : null;
 }
 
-export function selectNextQuestion(answers: Answer[]) {
+const careerBreakdownQuestionIdByProfile: Record<Profile["id"], number> = {
+  "administracion-finanzas": 405,
+  "arte-comunicacion-diseno": 402,
+  "ciencia-datos-investigacion": 403,
+  "educacion-ciencias-sociales": 401,
+  "ingenieria-tecnologia": 407,
+  "negocios-gestion": 405,
+  "salud-apoyo-humano": 404,
+};
+
+function obtenerPreguntaDesgloseCarreraProbable(
+  answers: Answer[],
+  answeredIds: Set<number>,
+  averages: Record<Dimension, number>,
+  diagnostics: AdaptiveDiagnostics,
+) {
+  const forcedChoiceCount = obtenerRespuestasEleccionForzada(answers).filter(
+    (answer) => answer.trigger === "contrast" || answer.questionId >= 300,
+  ).length;
+
+  if (forcedChoiceCount >= maxForcedChoiceQuestions) return null;
+
+  const guidedBreakdownQuestion = obtenerPreguntaDeDesglosePorRespuestaGuiada(
+    answers,
+    answeredIds,
+  );
+
+  if (guidedBreakdownQuestion) return guidedBreakdownQuestion;
+
+  const alreadyAskedCareerBreakdown = Array.from(answeredIds).some(
+    (questionId) => questionId >= 401 && questionId <= 407,
+  );
+
+  if (alreadyAskedCareerBreakdown) return null;
+
+  if (
+    (diagnostics.lowDifferentiation || diagnostics.broadInterestPattern) &&
+    !answeredIds.has(309)
+  ) {
+    return questions.find((question) => question.id === 309) ?? null;
+  }
+
+  const rankedProfiles = reordenarPerfilesPorCoherencia(
+    obtenerPerfilesOrdenados(averages),
+    answers,
+    averages,
+  );
+  const bestProfile =
+    rankedProfiles.find((profile) =>
+      obtenerEstadoNucleoEstricto(profile, averages).coreMeetsStrictThreshold,
+    ) ?? rankedProfiles[0];
+  const breakdownQuestionId = bestProfile
+    ? careerBreakdownQuestionIdByProfile[bestProfile.id]
+    : undefined;
+
+  if (!breakdownQuestionId || answeredIds.has(breakdownQuestionId)) return null;
+
+  return questions.find((question) => question.id === breakdownQuestionId) ?? null;
+}
+
+export function seleccionarSiguientePregunta(answers: Answer[]) {
   const answeredIds = new Set(answers.map((answer) => answer.questionId));
   const unansweredLikert = questions.filter(
     (question) => question.kind === "likert" && !answeredIds.has(question.id),
   );
-  const likertCount = getLikertAnswers(answers).length;
+  const likertCount = obtenerRespuestasLikert(answers).length;
 
   if (likertCount < COMMON_BASELINE_QUESTION_COUNT) {
     return unansweredLikert[0] ?? null;
   }
 
-  const triggeredContrastQuestion = getTriggeredContrastQuestion(answers);
+  const triggeredContrastQuestion = obtenerPreguntaContrasteActivada(answers);
 
   if (triggeredContrastQuestion) {
     return triggeredContrastQuestion;
   }
 
-  const averages = getAverages(answers);
-  const diagnostics = getAdaptiveDiagnostics(answers, averages, getRankedProfiles(averages));
+  const averages = obtenerPromedios(answers);
+  const diagnostics = obtenerDiagnosticosAdaptativos(answers, averages, obtenerPerfilesOrdenados(averages));
+  const careerBreakdownQuestion = obtenerPreguntaDesgloseCarreraProbable(
+    answers,
+    answeredIds,
+    averages,
+    diagnostics,
+  );
+
+  if (careerBreakdownQuestion) {
+    return careerBreakdownQuestion;
+  }
 
   if (
     diagnostics.phase === "closure" &&
@@ -1621,8 +2372,8 @@ export function selectNextQuestion(answers: Answer[]) {
     return null;
   }
 
-  const narrativeSemanticFocus = getNarrativeSemanticFocus(answers);
-  const likertAnswers = getLikertAnswers(answers);
+  const narrativeSemanticFocus = obtenerFocoSemanticoNarrativo(answers);
+  const likertAnswers = obtenerRespuestasLikert(answers);
   const recentDimensions = likertAnswers.slice(-2).map((answer) => answer.dimension);
   const dimensionCounts = likertAnswers.reduce(
     (acc, answer) => ({
@@ -1644,7 +2395,7 @@ export function selectNextQuestion(answers: Answer[]) {
   const priorityDimensions = Array.from(
     new Set(topRiasec.flatMap((dimension) => adaptiveFocusByRiasec[dimension])),
   );
-  const thematicBlockQuestion = getThematicBlockQuestion(
+  const thematicBlockQuestion = obtenerPreguntaBloqueTematico(
     answers,
     unansweredLikert,
     averages,
@@ -1658,7 +2409,7 @@ export function selectNextQuestion(answers: Answer[]) {
     return thematicBlockQuestion;
   }
 
-  const triggeredOpenQuestion = getTriggeredOpenQuestion(answers);
+  const triggeredOpenQuestion = obtenerPreguntaAbiertaActivada(answers);
 
   if (triggeredOpenQuestion) {
     return triggeredOpenQuestion;
@@ -1726,12 +2477,12 @@ export function selectNextQuestion(answers: Answer[]) {
   );
 }
 
-export function processSubmittedAnswer(searchParams: SearchParams) {
-  const answers = decodeAnswers(getParam(searchParams, "state"));
-  const kind = getParam(searchParams, "kind");
-  const questionId = Number(getParam(searchParams, "questionId"));
+export function procesarRespuestaEnviada(searchParams: SearchParams) {
+  const answers = decodificarRespuestas(obtenerParametro(searchParams, "state"));
+  const kind = obtenerParametro(searchParams, "kind");
+  const questionId = Number(obtenerParametro(searchParams, "questionId"));
   const question = questions.find((item) => item.id === questionId);
-  const editQuestionId = Number(getParam(searchParams, "editQuestionId"));
+  const editQuestionId = Number(obtenerParametro(searchParams, "editQuestionId"));
   const existingAnswerIndex = answers.findIndex((answer) => answer.questionId === questionId);
   const isEditing =
     Number.isInteger(editQuestionId) &&
@@ -1744,8 +2495,8 @@ export function processSubmittedAnswer(searchParams: SearchParams) {
   }
 
   if (kind === "likert" && question.dimension) {
-    const value = Number(getParam(searchParams, "value"));
-    const comment = sanitizeOptionalUserText(getParam(searchParams, "comment")?.trim());
+    const value = Number(obtenerParametro(searchParams, "value"));
+    const comment = sanearTextoUsuarioOpcional(obtenerParametro(searchParams, "comment")?.trim());
 
     if (Number.isInteger(value) && value >= 1 && value <= 5) {
       const answer = {
@@ -1763,34 +2514,74 @@ export function processSubmittedAnswer(searchParams: SearchParams) {
           : {}),
       } satisfies LikertAnswer;
 
-      return [
-        ...baseAnswers,
-        answer,
-      ] satisfies Answer[];
+      return [...baseAnswers, answer] satisfies Answer[];
     }
   }
 
   if (kind === "open" && question.trigger) {
-    const guidedChoice = sanitizeOptionalUserText(getParam(searchParams, "guidedChoice")?.trim());
-    const unsureDetail = sanitizeOptionalUserText(getParam(searchParams, "unsureDetail")?.trim());
-    const submittedText = sanitizeOptionalUserText(getParam(searchParams, "text")?.trim());
-    const careerReference = sanitizeOptionalUserText(getParam(searchParams, "careerReference")?.trim());
-    const observedMismatch = getParam(searchParams, "observedMismatch") === "true";
-    const guidedText = [
-      guidedChoice.text ? `Opción guiada: ${guidedChoice.text}` : null,
-      unsureDetail.text ? `Detalle: ${unsureDetail.text}` : null,
-      submittedText.text ? `Comentario: ${submittedText.text}` : null,
-    ].filter(Boolean).join(" | ");
-    const rawText = guidedText || submittedText.text || "Sin respuesta";
-    const text = isLowInformationOpenAnswer(rawText)
+    const selectedOptionId = obtenerParametro(searchParams, "selectedOptionId")?.trim();
+    const selectedOption = obtenerOpcionSeleccionada(question, selectedOptionId);
+
+    const guidedChoice = sanearTextoUsuarioOpcional(
+      selectedOption?.text ?? obtenerParametro(searchParams, "guidedChoice")?.trim(),
+    );
+
+    const unsureDetail = sanearTextoUsuarioOpcional(
+      obtenerParametro(searchParams, "unsureDetail")?.trim(),
+    );
+
+    const submittedText = sanearTextoUsuarioOpcional(
+      obtenerParametro(searchParams, "text")?.trim(),
+    );
+
+    const careerReference = sanearTextoUsuarioOpcional(
+      obtenerParametro(searchParams, "careerReference")?.trim(),
+    );
+
+    const observedMismatch = obtenerParametro(searchParams, "observedMismatch") === "true";
+
+    const isUnknownAnswer =
+      selectedOption?.isUnknown === true ||
+      selectedOptionId === "unknown" ||
+      guidedChoice.text.toLowerCase().includes("no sé") ||
+      guidedChoice.text.toLowerCase().includes("no se");
+
+    const isTypedTextAnswer =
+      selectedOption?.opensTextInput === true ||
+      selectedOptionId === "write-own-answer";
+
+    const answerMode: OpenAnswer["answerMode"] = isUnknownAnswer
+      ? "unknown"
+      : isTypedTextAnswer
+        ? "typed-text"
+        : selectedOption || guidedChoice.text
+          ? "guided-option"
+          : "typed-text";
+
+    const rawText =
+      answerMode === "typed-text"
+        ? submittedText.text || "Sin respuesta"
+        : answerMode === "unknown"
+          ? [
+              "No lo tengo claro todavía.",
+              unsureDetail.text ? `Detalle: ${unsureDetail.text}` : null,
+              submittedText.text ? `Comentario: ${submittedText.text}` : null,
+            ]
+              .filter(Boolean)
+              .join(" | ")
+          : guidedChoice.text || submittedText.text || "Sin respuesta";
+
+    const text = esRespuestaAbiertaDeBajaInformacion(rawText)
       ? "No lo tengo claro todavía."
       : rawText;
-    const suspiciousReason = mergeSuspiciousReasons(
+
+    const suspiciousReason = combinarRazonesSospechosas(
       guidedChoice.suspiciousReason,
       unsureDetail.suspiciousReason,
       submittedText.suspiciousReason,
       careerReference.suspiciousReason,
     );
+
     const suspiciousInput = Boolean(
       guidedChoice.suspiciousInput ||
         unsureDetail.suspiciousInput ||
@@ -1806,6 +2597,9 @@ export function processSubmittedAnswer(searchParams: SearchParams) {
         trigger: question.trigger,
         text,
         order: baseAnswers.length + 1,
+        answerMode,
+        ...(selectedOptionId ? { selectedOptionId } : {}),
+        ...(selectedOption?.text ? { selectedOptionText: selectedOption.text } : {}),
         ...(careerReference.text ? { careerReference: careerReference.text } : {}),
         ...(observedMismatch ? { observedMismatch } : {}),
         ...(suspiciousInput
@@ -1820,26 +2614,28 @@ export function processSubmittedAnswer(searchParams: SearchParams) {
 
   return answers;
 }
+export function obtenerSenales(answers: Answer[]) {
+  const averages = obtenerPromedios(answers);
+  const resolution = obtenerEstadoResolucionConflicto(averages, answers);
+  const narrativeAnalysis = obtenerAnalisisNarrativo(answers);
+  const narrativeReliability = obtenerConfiabilidadNarrativa(obtenerTextosNarrativos(answers));
+  const narrativeOpenAnswers = obtenerRespuestasAbiertasNarrativas(answers);
 
-export function getSignals(answers: Answer[]) {
-  const averages = getAverages(answers);
-  const resolution = getConflictResolutionStatus(averages, answers);
-  const narrativeAnalysis = getNarrativeAnalysis(answers);
-  const narrativeReliability = getNarrativeReliability(getNarrativeTexts(answers));
-  const unclearOpenAnswers = getOpenAnswers(answers).filter((answer) =>
-    isLowInformationOpenAnswer(answer.text),
-  );
-  const openAnswers = getOpenAnswers(answers);
-  const contextualOpenAnswers = openAnswers.filter((answer) =>
-    isUsefulComment(answer.text),
-  );
-  const resolutiveOpenAnswers = openAnswers.filter((answer) =>
-    isClarificationUseful(answer.text),
-  );
+const unclearOpenAnswers = narrativeOpenAnswers.filter((answer) =>
+  esRespuestaAbiertaDeBajaInformacion(answer.text),
+);
+
+const contextualOpenAnswers = narrativeOpenAnswers.filter((answer) =>
+  esComentarioUtil(answer.text),
+);
+
+const resolutiveOpenAnswers = narrativeOpenAnswers.filter((answer) =>
+  esAclaracionUtil(answer.text),
+);
   const hasVariablePersistence =
-    hasVariableDimension(answers, "responsabilidad") ||
-    hasVariableDimension(answers, "tolerancia");
-  const hasAnyHighPressureAnswer = getLikertAnswers(answers).some(
+    tieneDimensionVariable(answers, "responsabilidad") ||
+    tieneDimensionVariable(answers, "tolerancia");
+  const hasAnyHighPressureAnswer = obtenerRespuestasLikert(answers).some(
     (answer) => answer.dimension === "presion" && answer.value >= 4,
   );
   const topRiasec = [...riasecDimensions]
@@ -1848,8 +2644,16 @@ export function getSignals(answers: Answer[]) {
   const topBigFive = [...bigFiveDimensions]
     .sort((a, b) => averages[b] - averages[a])
     .slice(0, 2);
-  const differentiation = calculateDifferentiationScore(averages);
+  const differentiation = calcularPuntajeDiferenciacion(averages);
   const categories = new Set(narrativeAnalysis.categories);
+  const narrativeUncertaintyBonus = obtenerBonusIncertidumbreNarrativa(
+    answers,
+    narrativeAnalysis,
+  );
+  const vocationalUncertainty = Math.min(
+    100,
+    Math.max(0, averages.incertidumbre * 20 + narrativeUncertaintyBonus),
+  );
   const narrativeSignals = [
     categories.has("uncertainty") && categories.has("external_pressure")
       ? "Parece existir una combinación entre dudas personales y factores externos que podrían estar influyendo en la decisión."
@@ -1874,9 +2678,11 @@ export function getSignals(answers: Answer[]) {
     differentiation.broadInterestPattern
       ? "Resultado exploratorio: aparecen muchos intereses RIASEC altos y poco diferenciados, por lo que conviene usar este resultado como mapa inicial y no como una única ruta cerrada."
       : null,
-    averages.incertidumbre >= 4 || averages.neuroticismo >= 4
-      ? "Incertidumbre vocacional alta: conviene validar el perfil con experiencias prácticas."
-      : "Incertidumbre vocacional controlada.",
+    vocationalUncertainty >= 70
+      ? "Incertidumbre vocacional alta: conviene validar el perfil con experiencias prácticas antes de decidir."
+      : vocationalUncertainty >= 40
+        ? "Incertidumbre vocacional moderada: aparecen dudas o señales narrativas de confusión que conviene aclarar."
+        : "Incertidumbre vocacional controlada.",
     averages.presion >= 4
       ? "Posible influencia externa: la recomendación debe revisarse separando expectativas externas de motivación propia."
       : hasAnyHighPressureAnswer
@@ -1908,11 +2714,11 @@ export function getSignals(answers: Answer[]) {
   ].filter((signal): signal is string => Boolean(signal));
 }
 
-export function getAdaptiveStatus(
+export function obtenerEstadoAdaptativo(
   answers: Answer[],
   currentQuestion: Question | null,
 ): AdaptiveStatus {
-  const likertCount = getLikertAnswers(answers).length;
+  const likertCount = obtenerRespuestasLikert(answers).length;
 
   if (!currentQuestion) {
     return {
@@ -1944,8 +2750,8 @@ export function getAdaptiveStatus(
     };
   }
 
-  const averages = getAverages(answers);
-  const diagnostics = getAdaptiveDiagnostics(answers, averages, getRankedProfiles(averages));
+  const averages = obtenerPromedios(answers);
+  const diagnostics = obtenerDiagnosticosAdaptativos(answers, averages, obtenerPerfilesOrdenados(averages));
   const topRiasec = [...riasecDimensions]
     .sort((a, b) => averages[b] - averages[a])
     .slice(0, 3);
@@ -1964,8 +2770,8 @@ export function getAdaptiveStatus(
   };
 }
 
-export function getStaticProfile(answers: Answer[]) {
-  return getBestProfile(
+export function obtenerPerfilEstatico(answers: Answer[]) {
+  return obtenerMejorPerfil(
     questions.slice(0, 6).flatMap((question) => {
       const answer = answers.find(
         (item): item is LikertAnswer =>
@@ -1975,3 +2781,29 @@ export function getStaticProfile(answers: Answer[]) {
     }),
   ).best;
 }
+
+function obtenerOpcionSeleccionada(question: Question, selectedOptionId: string | undefined) {
+  if (!selectedOptionId) return undefined;
+
+  return question.forcedChoiceOptions?.find((option) => option.id === selectedOptionId);
+}
+
+function obtenerPreguntaDeDesglosePorRespuestaGuiada(
+  answers: Answer[],
+  answeredIds: Set<number>,
+) {
+  const lastOpenAnswer = [...answers]
+    .reverse()
+    .find((answer): answer is OpenAnswer => answer.kind === "open");
+
+  if (!lastOpenAnswer?.selectedOptionId) return null;
+
+  const sourceQuestion = questions.find((question) => question.id === lastOpenAnswer.questionId);
+  const selectedOption = obtenerOpcionSeleccionada(sourceQuestion as Question, lastOpenAnswer.selectedOptionId);
+
+  if (!selectedOption?.nextQuestionId) return null;
+  if (answeredIds.has(selectedOption.nextQuestionId)) return null;
+
+  return questions.find((question) => question.id === selectedOption.nextQuestionId) ?? null;
+}
+
