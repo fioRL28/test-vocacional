@@ -1,6 +1,12 @@
 ﻿"use client";
 
 import { dimensionLabels, questions } from "@/lib/vocational/data";
+import {
+  analizarRespuestaLibreVocacional,
+  analizarTextoFocoSemantico,
+  analizarTextoNarrativo,
+} from "@/lib/vocational/responsePatterns";
+import type { LayeredResultSubroute } from "@/lib/vocational/occupationalCatalog";
 import type { Answer, Dimension, Profile, ResultIndicators } from "@/lib/vocational/types";
 
 export function PanelReporte({
@@ -14,6 +20,7 @@ export function PanelReporte({
   reasons,
   resultLabel,
   strengths,
+  subroutes,
   resultMeaning,
 }: {
   answers: Answer[];
@@ -33,9 +40,14 @@ export function PanelReporte({
   reasons: string[];
   resultLabel: string;
   strengths: string[];
+  subroutes: LayeredResultSubroute[];
   resultMeaning: { primary: string; action: string };
 }) {
   const compatibleAreaNames = areas.map((area) => area.name);
+  const scoredSubroutes = subroutes
+    .slice()
+    .sort((a, b) => b.relevance - a.relevance)
+    .slice(0, 5);
 
   return (
     <aside className="print-report hidden rounded-lg border border-[#dfe5ef] bg-white p-4 shadow-sm print:block">
@@ -61,6 +73,7 @@ export function PanelReporte({
             <LineaReporte label="Área amplia relacionada" value={profile.name} />
           ) : null}
           <LineaReporte label="Área de referencia" value={mainResultName} />
+          <LineaReporte label="Puntaje de ruta amplia" value={`${profile.score.toFixed(1)} pts`} />
           <LineaReporte
             label="Áreas compatibles"
             value={compatibleAreaNames.length > 0 ? compatibleAreaNames.join(", ") : "No definido"}
@@ -74,6 +87,62 @@ export function PanelReporte({
             label="Presión externa"
             value={`${indicators.externalPressure.toFixed(0)}%`}
           />
+        </div>
+      </section>
+
+      <section className="mt-5 border-t border-[#dfe5ef] pt-4">
+        <h3 className="font-semibold">Ruta y subrutas según puntaje</h3>
+        <div className="mt-3 space-y-2">
+          <div className="rounded-md bg-[#f2f5f8] px-3 py-2 text-xs leading-5">
+            <p className="font-semibold">{profile.name}</p>
+            <p className="mt-1 text-[#64748B]">
+              Ruta amplia de referencia: {profile.score.toFixed(1)} pts.
+            </p>
+          </div>
+
+          {scoredSubroutes.length > 0 ? (
+            scoredSubroutes.map((subroute) => (
+              <div
+                key={subroute.id}
+                className="rounded-md border border-[#dfe5ef] px-3 py-2 text-xs leading-5"
+              >
+                <p className="font-semibold">
+                  {subroute.name} · {subroute.relevance.toFixed(0)}%
+                </p>
+                <p className="mt-1 text-[#64748B]">
+                  Familia: {subroute.familyName}
+                  {subroute.rawAffinity !== undefined
+                    ? ` · Afinidad base: ${subroute.rawAffinity.toFixed(0)}%`
+                    : ""}
+                </p>
+                {subroute.compatibilityTrace ? (
+                  <p className="mt-1 text-[#64748B]">
+                    Dimensiones {subroute.compatibilityTrace.dimensionScore}% · patrón{" "}
+                    {subroute.compatibilityTrace.combinedPatternScore}% · evidencia{" "}
+                    {subroute.compatibilityTrace.explicitEvidenceScore}% · confirmación{" "}
+                    {subroute.compatibilityTrace.adaptiveConfirmationScore}% · penalización{" "}
+                    {subroute.compatibilityTrace.penaltyScore}%.
+                  </p>
+                ) : null}
+                <p className="mt-1 text-[#64748B]">
+                  Estado:{" "}
+                  {obtenerNivelCompatibilidadReporte(
+                    subroute.relevance,
+                    subroute.compatibilityTrace?.requiredEvidenceMet,
+                  )}
+                </p>
+                {subroute.reasons.length > 0 ? (
+                  <p className="mt-1 text-[#475569]">
+                    Sustento: {subroute.reasons.slice(0, 2).join("; ")}.
+                  </p>
+                ) : null}
+              </div>
+            ))
+          ) : (
+            <p className="rounded-md bg-[#f2f5f8] px-3 py-2 text-xs leading-5 text-[#64748B]">
+              No se detectaron subrutas concretas con puntaje suficiente.
+            </p>
+          )}
         </div>
       </section>
 
@@ -157,16 +226,19 @@ export function PanelReporte({
                     )}
                   </div>
                 ) : (
-                  <p className="mt-2 text-[#64748B]">
-                    {obtenerEtiquetaRespuestaAbierta(answer, question?.scaleType)}{" "}
-                    <span className="font-semibold text-[#17202a]">
-                      {answer.answerMode === "typed-text"
-                        ? answer.text
-                        : question?.scaleType === "forced_choice"
-                        ? answer.text.replace(/^Opción guiada:\s*/, "")
-                        : answer.text}
-                    </span>
-                  </p>
+                  <div className="mt-2 space-y-1 text-[#64748B]">
+                    <p>
+                      {obtenerEtiquetaRespuestaAbierta(answer, question?.scaleType)}{" "}
+                      <span className="font-semibold text-[#17202a]">
+                        {answer.answerMode === "typed-text"
+                          ? answer.text
+                          : question?.scaleType === "forced_choice"
+                          ? answer.text.replace(/^Opción guiada:\s*/, "")
+                          : answer.text}
+                      </span>
+                    </p>
+                    <AnalisisRespuestaReporte answer={answer} />
+                  </div>
                 )}
               </div>
             );
@@ -195,6 +267,45 @@ function LineaReporte({ label, value }: { label: string; value: string }) {
       <span className="min-w-28 text-[#64748B]">{label}:</span>
       <span className="font-semibold">{value}</span>
     </p>
+  );
+}
+
+function AnalisisRespuestaReporte({
+  answer,
+}: {
+  answer: Extract<Answer, { kind: "open" }>;
+}) {
+  const text = [answer.text, answer.selectedOptionText, answer.careerReference]
+    .filter((value): value is string => Boolean(value))
+    .join(" ");
+  const narrative = analizarTextoNarrativo(text);
+  const semantic = analizarTextoFocoSemantico(text);
+  const free = answer.answerMode === "typed-text" ? analizarRespuestaLibreVocacional(text) : null;
+  const matchedItems = [
+    ...narrative.matchedPatterns.map((pattern) => `patrón narrativo: ${pattern}`),
+    ...semantic.semanticFocus.map((focus) => `foco: ${focus}`),
+    ...(free?.suggestedRoutes ?? []).map((route) => `ruta sugerida: ${route}`),
+  ];
+
+  return (
+    <>
+      <p>
+        Tipo:{" "}
+        <span className="font-semibold text-[#17202a]">
+          {obtenerTipoRespuestaAbierta(answer)}
+        </span>
+      </p>
+      {matchedItems.length > 0 ? (
+        <p>
+          Diccionario:{" "}
+          <span className="font-semibold text-[#17202a]">
+            {matchedItems.slice(0, 5).join(", ")}
+          </span>
+        </p>
+      ) : (
+        <p>Diccionario: sin coincidencias semánticas directas.</p>
+      )}
+    </>
   );
 }
 
@@ -231,6 +342,12 @@ function obtenerEtiquetaRespuestaAbierta(
   if (scaleType === "forced_choice") return "Opción seleccionada:";
 
   return "Respuesta abierta:";
+}
+
+function obtenerTipoRespuestaAbierta(answer: Extract<Answer, { kind: "open" }>) {
+  if (answer.answerMode === "typed-text") return "abierta escrita";
+  if (answer.answerMode === "unknown") return "abierta de incertidumbre";
+  return "semiabierta guiada";
 }
 
 

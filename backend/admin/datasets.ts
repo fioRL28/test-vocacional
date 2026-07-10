@@ -3,8 +3,8 @@ import path from "path";
 
 const CSV_FILES = {
   actual: {
-    filePath: path.join(/*turbopackIgnore: true*/ process.cwd(), "data.csv"),
-    fileName: "data.csv",
+    filePath: "C:\\Users\\fiore\\Pictures\\data_test.csv",
+    fileName: "data_test.csv",
   },
   inicial: {
     filePath: path.join(/*turbopackIgnore: true*/ process.cwd(), "data-inicial.csv"),
@@ -17,7 +17,6 @@ type CsvCell = { header: string; value: string };
 type CsvRow = CsvCell[];
 
 export type DatasetStatusSummary = {
-  discardedRows: number;
   incompleteRows: number;
   readyRows: number;
   totalRows: number;
@@ -135,13 +134,11 @@ function parseCsvRows(content: string) {
 }
 
 function buildStatusSummary(rows: CsvRow[]): DatasetStatusSummary {
-  const discardedRows = rows.filter((row) => getRecordStatus(row) === "discarded").length;
   const validRows = rows.filter((row) => getRecordStatus(row) === "valid").length;
-  const incompleteRows = Math.max(0, rows.length - validRows - discardedRows);
+  const incompleteRows = Math.max(0, rows.length - validRows);
   const readyRows = rows.filter(isReadyForTraining).length;
 
   return {
-    discardedRows,
     incompleteRows,
     readyRows,
     totalRows: rows.length,
@@ -201,8 +198,13 @@ function buildFeatures(headers: string[]): DatasetFeatureSummary[] {
 function getRecordStatus(row: CsvRow) {
   const rawStatus = getCell(row, [/session_status/, /estado/, /status/]).toLowerCase();
 
-  if (rawStatus.includes("cancel") || rawStatus.includes("descart")) return "discarded";
-  if (rawStatus.includes("progress") || rawStatus.includes("progreso") || rawStatus.includes("incomplete")) {
+  if (
+    rawStatus.includes("cancel") ||
+    rawStatus.includes("descart") ||
+    rawStatus.includes("progress") ||
+    rawStatus.includes("progreso") ||
+    rawStatus.includes("incomplete")
+  ) {
     return "incomplete";
   }
 

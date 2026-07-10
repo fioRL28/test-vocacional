@@ -357,6 +357,7 @@ export function VistaResultados({
         resultLabel={resultLabel}
         resultMeaning={resultMeaning}
         strengths={strengths}
+        subroutes={layeredResult.concreteSubroutes}
       />
     </>
   );

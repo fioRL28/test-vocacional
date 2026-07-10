@@ -186,7 +186,9 @@ export type VocationalCombinedPattern = {
 };
 
 export type RouteCompatibilityTrace = {
+  routeCode: string;
   routeName: string;
+  domain?: string;
   dimensionScore: number;
   combinedPatternScore: number;
   explicitEvidenceScore: number;
@@ -194,6 +196,11 @@ export type RouteCompatibilityTrace = {
   penaltyScore: number;
   finalScore: number;
   requiredEvidenceMet: boolean;
+  matchedEvidence?: string[];
+  missingEvidence?: string[];
+  contradictionEvidence?: string[];
+  reasons?: string[];
+  evidenceReasons?: string[];
 };
 
 export type VocationalFamilyMetadata = {

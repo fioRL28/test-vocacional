@@ -3,6 +3,7 @@ import {
   cerrarSesionAdministrador,
   requerirAdminActual,
 } from "@/backend/admin/auth";
+import { obtenerResumenDatasetCsv } from "@/backend/admin/datasets";
 import { obtenerResumenEntrenamientoMl } from "@/backend/admin/mlArtifacts";
 import { AdminDashboard, type AdminDashboardData } from "@/frontend/admin/AdminDashboard";
 
@@ -55,6 +56,7 @@ async function obtenerDatosDashboardAdmin(rangeDays: number): Promise<AdminDashb
     activeQuestions,
     adminUsers,
     trainingSummary,
+    datasetSummaries,
   ] = await Promise.all([
     prisma.testSession.count(),
     prisma.testSession.count({ where: { status: "COMPLETED" } }),
@@ -108,8 +110,16 @@ async function obtenerDatosDashboardAdmin(rangeDays: number): Promise<AdminDashb
     prisma.question.count({ where: { isActive: true } }),
     prisma.adminUser.count(),
     obtenerResumenEntrenamientoMl(),
+    obtenerResumenDatasetCsv(),
   ]);
 
+  const mainDataset = datasetSummaries[0];
+  const datasetStatus = mainDataset?.statusSummary;
+  const datasetTotalRows =
+    datasetStatus?.totalRows ??
+    (trainingSummary.datasetRows || latestExperiment?.datasetSnapshot?.rowCount || datasetRows);
+  const datasetCompleteRows = datasetStatus?.validRows ?? datasetTotalRows;
+  const datasetIncompleteRows = datasetStatus?.incompleteRows ?? 0;
   const profiles = await prisma.vocationalProfile.findMany({
     where: {
       id: { in: profileRows.map((row) => row.predictedProfileId) },
@@ -136,7 +146,9 @@ async function obtenerDatosDashboardAdmin(rangeDays: number): Promise<AdminDashb
       adminUsers,
       anonymousSessions: totalSessions,
       completedTests: completedSessions,
-      datasetRecords: trainingSummary.datasetRows || latestExperiment?.datasetSnapshot?.rowCount || datasetRows,
+      datasetCompleteRecords: datasetCompleteRows,
+      datasetIncompleteRecords: datasetIncompleteRows,
+      datasetRecords: datasetTotalRows,
       modelAccuracy,
       generatedPredictions,
     },
@@ -152,10 +164,11 @@ async function obtenerDatosDashboardAdmin(rangeDays: number): Promise<AdminDashb
     })),
     model: {
       accuracy: bestModel ? Math.round(bestModel.accuracy * 1000) / 10 : latestExperiment ? Math.round(Number(latestExperiment.accuracy) * 1000) / 10 : 0,
-      datasetRows: trainingSummary.datasetRows || latestExperiment?.datasetSnapshot?.rowCount || datasetRows,
+      datasetRows: datasetTotalRows,
       f1Score: bestModel ? Math.round(bestModel.f1Score * 1000) / 10 : latestExperiment ? Math.round(Number(latestExperiment.f1Score) * 1000) / 10 : 0,
       features: trainingSummary.features || activeQuestions,
       lastTraining: trainingSummary.lastTraining ? formatDateTime(trainingSummary.lastTraining) : latestExperiment ? formatDateTime(latestExperiment.trainedAt) : "Sin entrenamiento registrado",
+      metricRows: trainingSummary.datasetRows,
       metrics: trainingSummary.metrics.map((metric) => ({
         accuracy: Math.round(metric.accuracy * 1000) / 10,
         f1Score: Math.round(metric.f1Score * 1000) / 10,
@@ -186,9 +199,9 @@ async function obtenerDatosDashboardAdmin(rangeDays: number): Promise<AdminDashb
         detail: "El seguimiento se mantiene con sesiones anonimas y sin datos personales.",
       },
       {
-        tone: totalProfileResults < 30 ? "warning" : "info",
-        title: totalProfileResults < 30 ? "Dataset en crecimiento" : "Dataset actualizado",
-        detail: `${totalProfileResults} predicciones disponibles para revisar distribucion vocacional.`,
+        tone: datasetTotalRows < 30 ? "warning" : "info",
+        title: datasetTotalRows < 30 ? "Dataset en crecimiento" : "Dataset actualizado",
+        detail: `${datasetTotalRows} registros: ${datasetCompleteRows} completos y ${datasetIncompleteRows} incompletos.`,
       },
       {
         tone: bestModel || latestExperiment ? "info" : "warning",

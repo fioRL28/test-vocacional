@@ -29,7 +29,6 @@ export default async function DatasetPage({
   const datasets = await obtenerResumenDatasetCsv();
   const mainDataset = datasets[0];
   const statusSummary = mainDataset?.statusSummary ?? {
-    discardedRows: 0,
     incompleteRows: 0,
     readyRows: 0,
     totalRows: 0,
@@ -40,7 +39,6 @@ export default async function DatasetPage({
   const totalColumns = mainDataset?.columns ?? 0;
   const validRows = statusSummary.validRows;
   const incompleteRows = statusSummary.incompleteRows;
-  const discardedRows = statusSummary.discardedRows;
   const readyRows = statusSummary.readyRows;
 
   const baseSampleRows = mainDataset?.sample ?? [];
@@ -86,14 +84,6 @@ export default async function DatasetPage({
             Exportar CSV
           </Link>
 
-          <Link
-            href="/admin/dataset#validacion-dataset"
-            className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-[#ded7f4] bg-white px-5 text-xs font-bold text-[#071033] transition hover:bg-[#f6f3ff]"
-          >
-            <span aria-hidden="true">▣</span>
-            Validar dataset
-          </Link>
-
           <form action={registrarEntrenamientoDesdeArtefactos}>
             <button
               type="submit"
@@ -106,7 +96,7 @@ export default async function DatasetPage({
         </div>
       </header>
 
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard
           icon="database"
           label="Registros totales"
@@ -116,7 +106,7 @@ export default async function DatasetPage({
 
         <KpiCard
           icon="check"
-          label="Registros válidos"
+          label="Registros completos"
           value={validRows.toLocaleString("es-PE")}
           detail={`${percent(validRows, Math.max(totalRows, 1))}% del total`}
           tone="green"
@@ -128,14 +118,6 @@ export default async function DatasetPage({
           value={incompleteRows.toLocaleString("es-PE")}
           detail={`${percent(incompleteRows, Math.max(totalRows, 1))}% del total`}
           tone="orange"
-        />
-
-        <KpiCard
-          icon="trash"
-          label="Registros descartados"
-          value={discardedRows.toLocaleString("es-PE")}
-          detail={`${percent(discardedRows, Math.max(totalRows, 1))}% del total`}
-          tone="red"
         />
 
         <KpiCard
@@ -153,7 +135,7 @@ export default async function DatasetPage({
         <div className="grid gap-4 xl:grid-cols-[1.05fr_1fr_1fr_0.95fr_auto] xl:items-end">
           <SegmentedFilter
             label="Estado del registro"
-            options={["Todos", "Válido", "Incompleto", "Descartado"]}
+            options={["Todos", "Completo", "Incompleto"]}
           />
 
           <Select label="Perfil vocacional" name="perfil" value={profileFilter}>
@@ -182,33 +164,6 @@ export default async function DatasetPage({
         </form>
       </section>
 
-      <section
-        id="validacion-dataset"
-        className="mt-4 rounded-2xl border border-[#d9cef7] bg-white p-4 shadow-[0_10px_28px_rgba(37,44,97,0.04)]"
-      >
-        <h2 className="text-[1rem] font-bold tracking-[-0.01em] text-[#071033]">
-          Validacion del dataset
-        </h2>
-        <div className="mt-3 grid gap-3 md:grid-cols-3">
-          <ValidationItem
-            label="Calidad"
-            value={validRows > 0 ? "Operativo" : "Sin registros validos"}
-          />
-          <ValidationItem
-            label="Listo para entrenamiento"
-            value={`${readyRows.toLocaleString("es-PE")} filas`}
-          />
-          <ValidationItem
-            label="Observaciones"
-            value={
-              incompleteRows || discardedRows
-                ? "Revisar filas incompletas o descartadas"
-                : "Sin alertas"
-            }
-          />
-        </div>
-      </section>
-
       <section className="mt-4 grid gap-4 xl:grid-cols-[1fr_0.9fr_1.35fr]">
         <ChartCard title="Distribución por perfil vocacional">
           {profileDistribution.length ? (
@@ -228,9 +183,8 @@ export default async function DatasetPage({
           <DonutChart
             centerLabel="registros"
             data={[
-              { label: "Válidos", value: validRows, color: "#14945a" },
+              { label: "Completos", value: validRows, color: "#14945a" },
               { label: "Incompletos", value: incompleteRows, color: "#f59e0b" },
-              { label: "Descartados", value: discardedRows, color: "#d92d55" },
             ]}
           />
         </ChartCard>
@@ -307,7 +261,7 @@ export default async function DatasetPage({
                         <span className="line-clamp-2">{getDateValue(row)}</span>
                       </td>
                       <td className="border-b border-[#eef0f6] px-3 py-2.5">
-                        <TrainingUseBadge value={status === "Válido"} />
+                        <TrainingUseBadge value={status === "Completo"} />
                       </td>
                       <td className="border-b border-[#eef0f6] px-3 py-2.5 pr-4">
                         <div className="flex flex-wrap gap-2">
@@ -323,7 +277,7 @@ export default async function DatasetPage({
                           >
                             Ver detalle
                           </Link>
-                          {status !== "Válido" ? (
+                          {status !== "Completo" ? (
                             <Link
                               href={`/admin/dataset?${buildDatasetQuery({
                                 date: dateFilter,
@@ -677,38 +631,6 @@ function buildDonutGradient(
   return `conic-gradient(${segments.join(", ")})`;
 }
 
-function HorizontalBar({
-  label,
-  max,
-  tone = "purple",
-  value,
-}: {
-  label: string;
-  max: number;
-  tone?: "purple" | "green" | "orange" | "red";
-  value: number;
-}) {
-  const width = Math.max(4, (value / Math.max(max, 1)) * 100);
-  const color = {
-    purple: "bg-[#7c3aed]",
-    green: "bg-[#14945a]",
-    orange: "bg-[#f59e0b]",
-    red: "bg-[#d92d55]",
-  }[tone];
-
-  return (
-    <div>
-      <div className="mb-1.5 flex justify-between gap-3 text-xs font-medium text-[#5d6685]">
-        <span className="truncate">{label}</span>
-        <span className="shrink-0 font-bold text-[#071033]">{value}</span>
-      </div>
-      <div className="h-2.5 rounded-full bg-[#eef0f6]">
-        <div className={`h-2.5 rounded-full ${color}`} style={{ width: `${width}%` }} />
-      </div>
-    </div>
-  );
-}
-
 function LineChart({ data }: { data: DatePoint[] }) {
   const points = data.length ? data : [{ label: "Sin datos", value: 0 }];
   const highestValue = Math.max(1, ...points.map((point) => point.value));
@@ -844,11 +766,10 @@ function buildYAxisTicks(axisMax: number) {
   );
 }
 
-function StatusBadge({ status }: { status: "Válido" | "Incompleto" | "Descartado" }) {
+function StatusBadge({ status }: { status: "Completo" | "Incompleto" }) {
   const styles = {
-    Válido: "bg-[#ddf8e9] text-[#108a53]",
+    Completo: "bg-[#ddf8e9] text-[#108a53]",
     Incompleto: "bg-[#fff0d8] text-[#b05d00]",
-    Descartado: "bg-[#ffe5ee] text-[#d92d55]",
   };
 
   return (
@@ -886,17 +807,6 @@ function TrainingUseBadge({ value }: { value: boolean }) {
 
 function EmptyText({ children }: { children: React.ReactNode }) {
   return <p className="py-6 text-center text-xs font-medium text-[#6e7696]">{children}</p>;
-}
-
-function ValidationItem({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-xl border border-[#eef0f6] bg-[#fbfaff] px-4 py-3">
-      <p className="text-[11px] font-bold uppercase tracking-[0.03em] text-[#7a829f]">
-        {label}
-      </p>
-      <p className="mt-1 text-sm font-bold text-[#071033]">{value}</p>
-    </div>
-  );
 }
 
 function DatasetIcon({
@@ -1007,7 +917,7 @@ function matchesDatasetFilters(
   const status = normalizeFilterText(getRecordStatus(row));
   const filterStatus = normalizeFilterText(filters.status);
   const profile = getProfile(row);
-  const ready = status.includes("valido");
+  const ready = status.includes("completo");
 
   if (filterStatus !== "todos" && !status.includes(filterStatus)) {
     return false;
@@ -1187,13 +1097,20 @@ function getProfile(row: SampleRow) {
   );
 }
 
-function getRecordStatus(row: SampleRow): "Válido" | "Incompleto" | "Descartado" {
+function getRecordStatus(row: SampleRow): "Completo" | "Incompleto" {
   const rawStatus = getCell(row, [/estado/, /status/]).toLowerCase();
 
-  if (rawStatus.includes("cancel") || rawStatus.includes("descart")) return "Descartado";
-  if (rawStatus.includes("progress") || rawStatus.includes("progreso") || rawStatus.includes("incompleto")) return "Incompleto";
+  if (
+    rawStatus.includes("cancel") ||
+    rawStatus.includes("descart") ||
+    rawStatus.includes("progress") ||
+    rawStatus.includes("progreso") ||
+    rawStatus.includes("incompleto")
+  ) {
+    return "Incompleto";
+  }
 
-  return "Válido";
+  return "Completo";
 }
 
 function getConfidence(row: SampleRow) {

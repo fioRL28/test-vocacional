@@ -2,6 +2,7 @@ import {
   cerrarSesionAdministrador,
   requerirAdminActual,
 } from "@/backend/admin/auth";
+import { obtenerResumenDatasetCsv } from "@/backend/admin/datasets";
 import { registrarEntrenamientoDesdeArtefactos } from "@/backend/admin/modelActions";
 import { obtenerDatosModelosAdmin } from "@/backend/admin/reports";
 import { AdminShell } from "@/frontend/admin/AdminShell";
@@ -20,7 +21,15 @@ export default async function ModelosPage({
   const activeModelId = Number(first(params.activo));
   const detailModelId = Number(first(params.detalle));
   const expandedChartKey = first(params.grafico);
-  const data = await obtenerDatosModelosAdmin();
+  const [data, datasets] = await Promise.all([
+    obtenerDatosModelosAdmin(),
+    obtenerResumenDatasetCsv(),
+  ]);
+  const datasetActual = datasets[0];
+  const datasetName = datasetActual?.fileName ?? "data_test.csv";
+  const datasetTotalRows = datasetActual?.statusSummary.totalRows ?? 0;
+  const datasetCompleteRows = datasetActual?.statusSummary.validRows ?? datasetTotalRows;
+  const datasetIncompleteRows = datasetActual?.statusSummary.incompleteRows ?? 0;
   const experimentRows = data.experiments.filter((experiment) =>
     modelFilter ? experiment.modelName === modelFilter : true,
   );
@@ -124,9 +133,9 @@ export default async function ModelosPage({
 
         <InfoCard
           icon="database"
-          label="Dataset usado"
-          value={`${activeExperiment?.datasetRows?.toLocaleString("es-PE") ?? 0} registros válidos`}
-          detail="Respuestas anónimas del test"
+          label="Dataset actual"
+          value={`${datasetTotalRows.toLocaleString("es-PE")} registros`}
+          detail={`${datasetCompleteRows.toLocaleString("es-PE")} completos / ${datasetIncompleteRows.toLocaleString("es-PE")} incompletos`}
           tone="green"
         />
 
@@ -162,7 +171,7 @@ export default async function ModelosPage({
 
           <Select label="Dataset">
             <option>Dataset actual</option>
-            <option>Solo registros válidos</option>
+            <option>Solo completos</option>
             <option>Último entrenamiento</option>
           </Select>
 
@@ -210,10 +219,10 @@ export default async function ModelosPage({
             <DetailItem label="Precision" value={asPercent(detailExperiment.precision)} />
             <DetailItem label="Recall" value={asPercent(detailExperiment.recall)} />
             <DetailItem label="F1 Score" value={asPercent(detailExperiment.f1Score)} />
-            <DetailItem label="Dataset" value={detailExperiment.datasetVersion} />
+            <DetailItem label="Dataset" value={datasetName} />
             <DetailItem
               label="Registros"
-              value={detailExperiment.datasetRows.toLocaleString("es-PE")}
+              value={datasetTotalRows.toLocaleString("es-PE")}
             />
             <DetailItem label="Entrenado" value={formatDate(detailExperiment.trainedAt)} />
           </div>
@@ -301,7 +310,7 @@ export default async function ModelosPage({
                   "Modelo",
                   "Accuracy",
                   "F1 Score",
-                  "Dataset usado",
+                  "Dataset actual",
                   "Último entrenamiento",
                   "Estado",
                   "Acciones",
@@ -346,7 +355,7 @@ export default async function ModelosPage({
                     </td>
 
                     <td className="border-b border-[#eef0f6] px-4 py-3 font-medium text-[#4c5578]">
-                      {experiment.datasetRows.toLocaleString("es-PE")} registros válidos
+                      {datasetTotalRows.toLocaleString("es-PE")} registros
                     </td>
 
                     <td className="border-b border-[#eef0f6] px-4 py-3 font-medium text-[#4c5578]">

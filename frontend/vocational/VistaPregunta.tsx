@@ -150,7 +150,7 @@ export function VistaPregunta({
         </div>
       </div>
 
-      <h2 className="mx-auto mt-6 max-w-3xl text-center text-xl font-bold leading-snug sm:text-2xl md:text-3xl">
+      <h2 className="mx-auto mt-6 max-w-3xl text-center text-lg font-bold leading-snug sm:text-xl md:text-2xl">
         {currentQuestion.text}
       </h2>
 

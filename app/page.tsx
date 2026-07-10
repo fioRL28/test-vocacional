@@ -7,68 +7,68 @@ const benefits = [
   {
     title: "100% anónimo",
     detail: "No pedimos nombres, correos ni datos personales.",
-    icon: "ID",
+    image: "/benefits/anonimo.svg",
   },
   {
     title: "Orientación inicial",
     detail: "Obtén una guía clara sobre tus intereses y áreas afines.",
-    icon: "BR",
+    image: "/benefits/orientacion.svg",
   },
   {
     title: "Basado en intereses",
     detail: "Preguntas diseñadas para conocer lo que te motiva y en qué destacas.",
-    icon: "IN",
+    image: "/benefits/intereses.svg",
   },
   {
     title: "Mejores decisiones",
     detail: "Conoce opciones de estudio y carreras que pueden ayudarte a construir tu futuro.",
-    icon: "OK",
+    image: "/benefits/decisiones.svg",
   },
 ];
 
 export default function HomePage() {
   return (
-    <main className="min-h-screen bg-[#fbfaff] px-4 py-4 text-[#111a44] sm:px-6">
-      <header className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#eee8fb] bg-white px-5 py-4 shadow-[0_14px_40px_rgba(83,67,160,0.07)]">
+    <main className="min-h-screen bg-[#fdfbff] px-4 py-3 text-[#111a44] sm:px-6">
+      <header className="mx-auto flex max-w-[1500px] flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#f0e8ff] bg-white px-5 py-3 shadow-sm sm:py-4">
         <div className="flex items-center gap-3">
           <Image
             src={brujulaImage}
             alt="RutaFuturo"
-            className="h-14 w-14 object-contain"
+            className="h-12 w-12 object-contain"
             priority
           />
           <div>
-            <p className="text-2xl font-black">RutaFuturo</p>
-            <p className="text-sm font-medium text-[#667096]">Test vocacional anónimo</p>
+            <p className="text-xl font-black">RutaFuturo</p>
+            <p className="text-xs font-medium text-[#667096]">Test vocacional anónimo</p>
           </div>
         </div>
         <Link
           href="/ingresar"
-          className="rounded-xl border border-[#d8cafa] px-5 py-3 text-sm font-black text-[#7c3aed] transition hover:bg-[#f4efff]"
+          className="inline-flex min-h-10 items-center rounded-xl border border-[#ded0fb] px-5 py-2 text-sm font-medium text-[#8b5cf6] transition hover:bg-[#f6f1ff]"
         >
           Acceso
         </Link>
       </header>
 
-      <section className="mx-auto mt-4 grid max-w-7xl items-center gap-8 rounded-2xl border border-[#eee8fb] bg-white/70 px-6 py-10 shadow-[0_18px_55px_rgba(83,67,160,0.06)] lg:grid-cols-[0.9fr_1fr] lg:px-24 lg:py-14">
+      <section className="mx-auto mt-3 grid max-w-[1500px] items-center gap-6 rounded-2xl border border-[#f0e8ff] bg-white/75 px-5 py-7 shadow-sm sm:px-6 lg:grid-cols-[0.9fr_1fr] lg:px-16 lg:py-9 xl:px-20">
         <div>
-          <p className="text-lg font-black text-[#7c3aed]">¡Bienvenido a RutaFuturo!</p>
-          <h1 className="mt-5 max-w-2xl text-4xl font-black leading-tight sm:text-5xl">
+          <p className="text-sm font-semibold text-[#8b5cf6] sm:text-base">¡Bienvenido a RutaFuturo!</p>
+          <h1 className="mt-4 max-w-xl text-2xl font-semibold leading-[1.15] sm:text-3xl xl:text-4xl">
             Descubre tus intereses y encuentra tu camino
           </h1>
-          <p className="mt-5 max-w-xl text-base leading-7 text-[#394267]">
+          <p className="mt-4 max-w-xl text-sm font-normal leading-relaxed text-[#394267] sm:text-base">
             Nuestro test vocacional te ayuda a identificar intereses, fortalezas y áreas
             de desarrollo para tomar mejores decisiones.
           </p>
 
-          <div className="mt-6 rounded-2xl border border-[#ddd3f5] bg-[#fbf8ff] p-5">
+          <div className="mt-5 max-w-xl rounded-2xl border border-[#eadfff] bg-[#fcf9ff] p-5 shadow-sm">
             <div className="flex gap-4">
-              <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-[#7c3aed] text-sm font-black text-white">
+              <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-[#8b5cf6] text-xs font-semibold text-white">
                 ID
               </div>
               <div>
-                <p className="font-black text-[#7c3aed]">100% anónimo y seguro</p>
-                <p className="mt-2 text-sm leading-6 text-[#4f5a7a]">
+                <p className="text-base font-semibold text-[#8b5cf6]">100% anónimo y seguro</p>
+                <p className="mt-1.5 text-sm font-normal leading-relaxed text-[#4f5a7a]">
                   El test no solicita nombres ni correos. Tus respuestas se gestionan mediante
                   un identificador anónimo.
                 </p>
@@ -76,69 +76,73 @@ export default function HomePage() {
             </div>
           </div>
 
-          <div className="mt-6 flex flex-wrap gap-3">
+          <div className="mt-5 flex flex-wrap gap-3">
             <Link
               href="/test"
-              className="inline-flex min-h-14 min-w-64 items-center justify-center rounded-xl bg-[#7c3aed] px-8 text-lg font-black text-white shadow-[0_16px_35px_rgba(124,58,237,0.24)] transition hover:bg-[#6d28d9]"
+              className="inline-flex min-h-11 min-w-48 items-center justify-center rounded-xl bg-[#8b5cf6] px-6 text-sm font-semibold text-white shadow-md transition hover:bg-[#7c3aed] hover:shadow-lg"
             >
               Iniciar test anónimo
             </Link>
           </div>
 
-          <p className="mt-4 text-sm font-medium text-[#667096]">
-            Sin registros. Sin datos personales. Solo tú y tus respuestas.
+          <p className="mt-3 text-sm font-normal text-[#667096]">
+            Sin registros, sin datos personales, solo tú y tus respuestas.
           </p>
         </div>
 
         <div className="grid place-items-center">
-          <div className="relative grid aspect-[1.15] w-full max-w-xl place-items-center rounded-full bg-[#f1eaff]">
+          <div className="relative grid aspect-[1.15] w-full max-w-md place-items-center rounded-full bg-[#f4efff] p-4">
             <Image
               src={pensandoImage}
               alt="Estudiante explorando sus intereses"
-              className="w-[78%] object-contain"
+              className="w-[74%] object-contain"
               priority
             />
-            <span className="absolute left-6 top-12 rounded-2xl bg-white px-4 py-3 text-sm font-black text-[#7c3aed] shadow-sm">
+            <span className="absolute left-6 top-12 rounded-2xl bg-white px-4 py-2 text-xs font-semibold text-[#8b5cf6] shadow-sm">
               Intereses
             </span>
-            <span className="absolute right-4 top-24 rounded-2xl bg-white px-4 py-3 text-sm font-black text-[#21a7d8] shadow-sm">
+            <span className="absolute right-4 top-24 rounded-2xl bg-white px-4 py-2 text-xs font-semibold text-[#21a7d8] shadow-sm">
               Fortalezas
             </span>
-            <span className="absolute bottom-14 left-10 rounded-2xl bg-white px-4 py-3 text-sm font-black text-[#27b889] shadow-sm">
+            <span className="absolute bottom-14 left-10 rounded-2xl bg-white px-4 py-2 text-xs font-semibold text-[#27b889] shadow-sm">
               Futuro
             </span>
           </div>
         </div>
       </section>
 
-      <section className="mx-auto mt-4 grid max-w-7xl gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <section className="mx-auto mt-3 grid max-w-[1500px] gap-3 md:grid-cols-2 xl:grid-cols-4">
         {benefits.map((benefit) => (
           <article
             key={benefit.title}
-            className="flex min-h-40 gap-5 rounded-2xl border border-[#eee8fb] bg-white p-6 shadow-[0_14px_40px_rgba(83,67,160,0.06)]"
+            className="flex min-h-32 gap-4 rounded-2xl border border-[#f0e8ff] bg-white p-6 shadow-sm"
           >
-            <div className="grid h-16 w-16 shrink-0 place-items-center rounded-full bg-[#efe9ff] text-sm font-black text-[#7c3aed]">
-              {benefit.icon}
-            </div>
+            <Image
+              src={benefit.image}
+              alt=""
+              className="h-[52px] w-[52px] shrink-0 rounded-full bg-[#f3edff] p-3 object-contain"
+              width={52}
+              height={52}
+            />
             <div>
-              <h2 className="text-lg font-black text-[#7c3aed]">{benefit.title}</h2>
-              <p className="mt-3 text-sm leading-6 text-[#4f5a7a]">{benefit.detail}</p>
+              <h2 className="text-base font-semibold text-[#8b5cf6]">{benefit.title}</h2>
+              <p className="mt-2 text-sm font-normal leading-relaxed text-[#4f5a7a]">{benefit.detail}</p>
             </div>
           </article>
         ))}
       </section>
 
-      <section className="mx-auto mt-4 flex max-w-7xl flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#eee8fb] bg-white px-6 py-5 shadow-[0_14px_40px_rgba(83,67,160,0.06)]">
+      <section className="mx-auto mt-3 flex max-w-[1500px] flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#f0e8ff] bg-white px-6 py-4 shadow-sm">
         <div>
-          <p className="text-lg font-black text-[#7c3aed]">Administración y seguridad</p>
-          <p className="mt-2 max-w-4xl text-sm leading-6 text-[#4f5a7a]">
+          <p className="text-lg font-semibold text-[#8b5cf6]">Administración y seguridad</p>
+          <p className="mt-1.5 max-w-4xl text-sm font-normal leading-relaxed text-[#4f5a7a]">
             Solo el administrador accede al panel de gestión y entrenamiento del modelo.
             Los resultados anónimos se utilizan para mejorar la experiencia y la precisión del sistema.
           </p>
         </div>
         <Link
           href="/ingresar"
-          className="rounded-xl border border-[#d8cafa] px-6 py-3 text-sm font-black text-[#7c3aed] transition hover:bg-[#f4efff]"
+          className="inline-flex min-h-10 items-center rounded-xl border border-[#ded0fb] px-5 py-2 text-sm font-medium text-[#8b5cf6] transition hover:bg-[#f6f1ff]"
         >
           Acceso
         </Link>

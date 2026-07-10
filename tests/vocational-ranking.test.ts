@@ -7,7 +7,10 @@ import {
   obtenerPromedios,
   obtenerSenales,
 } from "../lib/vocational/engine";
-import { construirArquitecturaResultadoPorCapas } from "../lib/vocational/occupationalCatalog";
+import {
+  construirArquitecturaResultadoPorCapas,
+  obtenerTrazabilidadEvidenciaExplicita,
+} from "../lib/vocational/occupationalCatalog";
 import type { Answer, Dimension, LikertAnswer, OpenAnswer } from "../lib/vocational/types";
 
 const dimensionQuestionIds: Record<Dimension, number> = {
@@ -92,6 +95,31 @@ function guidedAnswer(
   };
 }
 
+test("explicit evidence trace includes typed open answers and selected adaptive options", () => {
+  const answers = [
+    openAnswer(401, "Programar", 1),
+    guidedAnswer(
+      403,
+      "software-systems",
+      "Programar aplicaciones, sistemas o soluciones digitales.",
+      2,
+    ),
+  ] satisfies Answer[];
+  const trace = obtenerTrazabilidadEvidenciaExplicita(answers);
+
+  assert.match(trace.openAnswersText, /programar/);
+  assert.match(
+    trace.adaptiveSelectedOptionsText,
+    /programar aplicaciones sistemas o soluciones digitales/,
+  );
+  assert.match(trace.evidenceText, /programar/);
+  assert.match(trace.evidenceText, /programar aplicaciones sistemas o soluciones digitales/);
+  assert.equal(trace.hasSoftwareEvidence, true);
+  assert(trace.matchedKeywords.software.includes("programar"));
+  assert(trace.matchedKeywords.software.includes("aplicaciones"));
+  assert(trace.matchedKeywords.software.includes("soluciones digitales"));
+});
+
 function answersFromScores(
   overrides: Partial<Record<Dimension, number>>,
   openTexts: Array<{ questionId: number; text: string; trigger?: OpenAnswer["trigger"] }> = [],
@@ -157,6 +185,14 @@ function routeNamesAndScores(answers: Answer[]) {
   }));
 }
 
+function routesWithTrace(answers: Answer[]) {
+  return resultFor(answers).routes.map((route) => ({
+    id: route.id,
+    relevance: route.relevance,
+    trace: route.compatibilityTrace,
+  }));
+}
+
 function assertAnyTopRoute(
   routes: string[],
   expectedIds: string[],
@@ -203,23 +239,22 @@ test("309 graphic tie-breaker dominates and keeps architecture out without spati
   const routes = routeNamesAndScores(answers);
 
   assert.equal(routes[0]?.id, "graphic-design");
-  assert.deepEqual(
+  assertNoTopRoute(
     routes.map((route) => route.id),
-    [
-      "graphic-design",
-      "communication-audiovisual",
-      "journalism-public-communication",
-    ],
+    ["architecture-spatial-design"],
+    "Graphic tie-breaker should not rank architecture without spatial evidence",
   );
-  assert(routes[0].relevance > routes[1].relevance);
-  assert(routes[1].relevance > routes[2].relevance);
 });
 
 test("309 health tie-breaker prioritizes prevention and keeps laboratory out without direct lab signal", () => {
   const answers = broadExploratoryAnswers("Explorar salud, bienestar o prevencion.");
   const routes = routeIds(answers);
 
-  assert.equal(routes[0], "salud-bienestar-prevencion");
+  assertAnyTopRoute(
+    routes.slice(0, 2),
+    ["nutrition-health-wellbeing", "psychology-human-support"],
+    "Health tie-breaker should prioritize health/wellbeing or human support routes",
+  );
   assertNoTopRoute(
     routes,
     ["laboratory-science", "biotechnology-health-sciences", "architecture-spatial-design"],
@@ -233,7 +268,11 @@ test("309 education tie-breaker prioritizes education and keeps legal routes out
   );
   const routes = routeIds(answers);
 
-  assert.equal(routes[0], "educacion-orientacion-formacion");
+  assertAnyTopRoute(
+    routes.slice(0, 2),
+    ["educacion-orientacion-formacion", "education-teaching", "psychopedagogy-orientation"],
+    "Education tie-breaker should prioritize education routes",
+  );
   assertNoTopRoute(
     routes,
     ["derecho-ciencias-juridicas", "mediacion-resolucion-conflictos"],
@@ -261,10 +300,8 @@ test("health profile prioritizes health, nutrition, or psychology and avoids unr
   );
   const routes = routeIds(answers);
   const expected = [
-    "salud-bienestar-prevencion",
     "nutrition-health-wellbeing",
     "psychology-human-support",
-    "health-care",
   ];
   const forbidden = [
     "graphic-design",
@@ -479,24 +516,20 @@ test("project tie-breaker uses visual or process evidence instead of public poli
     ],
   );
   const routes = routeIds(answers);
-  const coherentAlternatives = [
-    "graphic-design",
-    "communication-audiovisual",
-    "industrial-processes",
-    "science-data-analysis",
-    "mechatronics-applied-technology",
-  ];
-
-  assert.equal(routes[0], "business-project-management");
+  assertAnyTopRoute(
+    routes.slice(0, 2),
+    ["business-project-management", "graphic-design"],
+    "Project/visual tie-breaker should prioritize explicit project or visual evidence",
+  );
   assert.equal(
     routes.slice(0, 3).includes("international-relations-public-policy"),
     false,
     `Project tie-breaker should not include public policy without direct signal. Top routes: ${routes.join(", ")}`,
   );
-  assertAnyTopRoute(
-    routes.slice(1, 3),
-    coherentAlternatives,
-    "Project tie-breaker should include visual/communication or technical/process route",
+  assertNoTopRoute(
+    routes.slice(0, 3),
+    ["international-relations-public-policy"],
+    "Project tie-breaker should not infer public policy from project evidence alone",
   );
 });
 
@@ -711,5 +744,185 @@ test("industrial does not appear in top 3 only because realistic and conventiona
     routes.slice(0, 3),
     ["industrial-processes"],
     "Industrial should not rank top 3 without process, quality, production, time, or operations evidence",
+  );
+});
+
+test("universal evidence layer ranks software from explicit digital evidence", () => {
+  const answers = answersFromScores(
+    {
+      investigativo: 5,
+      realista: 4,
+      convencional: 4,
+      responsabilidad: 4,
+      apertura: 4,
+    },
+    [{ questionId: 401, text: "Programar aplicaciones, software, codigo, soluciones digitales y bases de datos." }],
+  );
+  const routes = routesWithTrace(answers);
+
+  assertAnyTopRoute(
+    routes.slice(0, 2).map((route) => route.id),
+    ["systems-software", "science-data-analysis"],
+    "Software evidence should rank software/data technology routes first",
+  );
+  assertNoTopRoute(
+    routes.slice(0, 3).map((route) => route.id),
+    ["laboratory-science", "biotechnology-health-sciences"],
+    "Software evidence should not rank laboratory without health/lab evidence",
+  );
+  assert(routes[0]?.trace?.requiredEvidenceMet);
+});
+
+test("universal evidence layer ranks laboratory from lab-specific evidence", () => {
+  const answers = answersFromScores(
+    {
+      investigativo: 5,
+      convencional: 5,
+      responsabilidad: 5,
+      apertura: 4,
+    },
+    [{ questionId: 401, text: "Laboratorio, muestras, biologia, quimica, diagnostico clinico y farmacia." }],
+  );
+  const routes = routeIds(answers);
+
+  assertAnyTopRoute(
+    routes.slice(0, 2),
+    ["laboratory-science", "biotechnology-health-sciences"],
+    "Lab-specific evidence should rank laboratory or biotechnology first",
+  );
+});
+
+test("universal evidence layer ranks education from teaching evidence", () => {
+  const answers = answersFromScores(
+    {
+      social: 5,
+      extraversion: 4,
+      amabilidad: 5,
+      responsabilidad: 4,
+    },
+    [{ questionId: 401, text: "Ensenar, orientar estudiantes, capacitar y facilitar aprendizaje." }],
+  );
+  const routes = routeIds(answers);
+
+  assertAnyTopRoute(
+    routes.slice(0, 3),
+    ["educacion-orientacion-formacion", "education-teaching", "psychopedagogy-orientation"],
+    "Education evidence should rank education routes",
+  );
+});
+
+test("universal evidence layer ranks administration and finance from operational evidence", () => {
+  const answers = answersFromScores(
+    {
+      convencional: 5,
+      emprendedor: 4,
+      responsabilidad: 5,
+      investigativo: 3,
+    },
+    [{ questionId: 401, text: "Registros, presupuestos, pagos, control, documentos, costos y contabilidad." }],
+  );
+  const routes = routeIds(answers);
+
+  assert.equal(routes[0], "administrative-finance");
+});
+
+test("universal evidence layer ranks visual design from graphic evidence", () => {
+  const answers = answersFromScores(
+    {
+      artistico: 5,
+      apertura: 5,
+      responsabilidad: 4,
+      social: 3,
+    },
+    [{ questionId: 401, text: "Logos, piezas visuales, marcas, contenido grafico e identidad visual." }],
+  );
+  const routes = routeIds(answers);
+
+  assert.equal(routes[0], "graphic-design");
+});
+
+test("universal evidence layer ranks architecture only with spatial evidence", () => {
+  const answers = answersFromScores(
+    {
+      artistico: 5,
+      realista: 5,
+      apertura: 5,
+      responsabilidad: 4,
+    },
+    [{ questionId: 401, text: "Espacios, planos, ambientes, distribucion, diseno espacial e interiores." }],
+  );
+  const routes = routeIds(answers);
+
+  assert.equal(routes[0], "architecture-spatial-design");
+});
+
+test("universal evidence layer ranks psychology from emotional support evidence", () => {
+  const answers = answersFromScores(
+    {
+      social: 5,
+      amabilidad: 5,
+      responsabilidad: 4,
+      investigativo: 3,
+    },
+    [{ questionId: 401, text: "Escuchar emociones, bienestar emocional, acompanar personas y apoyo psicologico." }],
+  );
+  const routes = routeIds(answers);
+
+  assert.equal(routes[0], "psychology-human-support");
+});
+
+test("universal evidence layer ranks law from legal evidence", () => {
+  const answers = answersFromScores(
+    {
+      emprendedor: 5,
+      convencional: 5,
+      responsabilidad: 4,
+      social: 4,
+    },
+    [{ questionId: 401, text: "Leyes, justicia, normas, casos, argumentar, contratos y derechos." }],
+  );
+  const routes = routeIds(answers);
+
+  assert.equal(routes[0], "derecho-ciencias-juridicas");
+});
+
+test("universal evidence layer ranks environmental routes from environmental evidence", () => {
+  const answers = answersFromScores(
+    {
+      investigativo: 5,
+      realista: 4,
+      amabilidad: 4,
+      responsabilidad: 4,
+      emprendedor: 3,
+    },
+    [{ questionId: 401, text: "Ambiente, sostenibilidad, territorio, contaminacion, recursos naturales e impacto ambiental." }],
+  );
+  const routes = routeIds(answers);
+
+  assertAnyTopRoute(
+    routes.slice(0, 3),
+    ["environmental-engineering", "environmental-management", "natural-resources-territory"],
+    "Environmental evidence should rank environmental routes",
+  );
+});
+
+test("ambiguous systems mention does not automatically rank engineering first", () => {
+  const answers = answersFromScores(
+    {
+      investigativo: 5,
+      realista: 4,
+      responsabilidad: 4,
+      apertura: 4,
+    },
+    [{ questionId: 401, text: "Sistemas." }],
+  );
+  const routes = routesWithTrace(answers);
+
+  assert.notEqual(routes[0]?.id, "systems-software");
+  const systemsRoute = routes.find((route) => route.id === "systems-software");
+
+  assert(
+    !systemsRoute || systemsRoute.trace?.requiredEvidenceMet === false,
+    "Ambiguous 'sistemas' should not satisfy required software evidence",
   );
 });

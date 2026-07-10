@@ -1,4 +1,5 @@
 import { prisma } from "@/backend/db/prisma";
+import { obtenerResumenDatasetCsv } from "@/backend/admin/datasets";
 import type { Prisma, TestSessionStatus } from "@/backend/generated/prisma/client";
 
 export type ReportFilters = {
@@ -143,12 +144,19 @@ export async function generarCsvResultados(filters: ReportFilters = {}) {
 }
 
 export async function generarCsvModelos() {
-  const experiments = await prisma.mlExperiment.findMany({
-    orderBy: { trainedAt: "desc" },
-    include: {
-      datasetSnapshot: { select: { version: true, rowCount: true, source: true } },
-    },
-  });
+  const [experiments, datasets] = await Promise.all([
+    prisma.mlExperiment.findMany({
+      orderBy: { trainedAt: "desc" },
+      include: {
+        datasetSnapshot: { select: { version: true, rowCount: true, source: true } },
+      },
+    }),
+    obtenerResumenDatasetCsv(),
+  ]);
+  const datasetActual = datasets[0];
+  const datasetRows = datasetActual?.statusSummary.totalRows ?? "";
+  const datasetSource = datasetActual?.fileName ?? "";
+  const datasetVersion = datasetActual?.fileName ?? "";
 
   return toCsv(
     [
@@ -164,13 +172,13 @@ export async function generarCsvModelos() {
     ],
     experiments.map((experiment) => [
       experiment.modelName,
-      experiment.datasetVersion,
+      datasetVersion || experiment.datasetVersion,
       experiment.accuracy.toString(),
       experiment.precision.toString(),
       experiment.recall.toString(),
       experiment.f1Score.toString(),
-      experiment.datasetSnapshot?.rowCount ?? "",
-      experiment.datasetSnapshot?.source ?? "",
+      datasetRows,
+      datasetSource,
       experiment.trainedAt.toISOString(),
     ]),
   );
@@ -185,6 +193,7 @@ export async function obtenerDatosModelosAdmin() {
     completedSessions,
     confidenceSummary,
     modelUsage,
+    datasets,
   ] = await Promise.all([
     prisma.mlExperiment.findMany({
       orderBy: { trainedAt: "desc" },
@@ -222,12 +231,15 @@ export async function obtenerDatosModelosAdmin() {
       _count: { _all: true },
       orderBy: { _count: { modelUsed: "desc" } },
     }),
+    obtenerResumenDatasetCsv(),
   ]);
+  const datasetActual = datasets[0];
+  const datasetRows = datasetActual?.statusSummary.totalRows ?? 0;
 
   return {
     experiments: experiments.map((experiment) => ({
       accuracy: Number(experiment.accuracy),
-      datasetRows: experiment.datasetSnapshot?.rowCount ?? 0,
+      datasetRows,
       datasetVersion: experiment.datasetVersion,
       f1Score: Number(experiment.f1Score),
       id: experiment.id,

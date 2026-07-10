@@ -713,195 +713,893 @@ function obtenerTextoDecisionSubrutas(answers: Answer[]) {
     .join(" | ");
 }
 
-type EvidenceCategory =
-  | "software"
-  | "data"
-  | "spatial"
-  | "humanSupport"
-  | "finance"
-  | "industrial"
+type EvidenceDomain =
+  | "software-tech"
+  | "data-analysis"
+  | "automation"
+  | "logic"
+  | "science-research"
+  | "health-lab"
+  | "laboratory-specific"
+  | "education"
+  | "human-support"
+  | "business-management"
+  | "finance-admin"
+  | "law-policy"
+  | "art-design"
+  | "audiovisual-communication"
+  | "architecture-spatial"
   | "environment"
-  | "labLife";
+  | "animals-veterinary"
+  | "humanities"
+  | "industrial-processes"
+  | "public-community";
 
-type RouteEvidenceProfile = {
-  required?: EvidenceCategory;
-  supportive: EvidenceCategory[];
+type ExplicitEvidenceDomain =
+  | "software"
+  | "healthLab"
+  | "education"
+  | "businessProcess"
+  | "artCommunication"
+  | "humanSupport";
+
+type ExplicitEvidenceTrace = {
+  openAnswersText: string;
+  adaptiveSelectedOptionsText: string;
+  evidenceText: string;
+  matchedKeywords: Record<ExplicitEvidenceDomain, string[]>;
+  matchedEvidenceGroups: Partial<Record<EvidenceDomain, string[]>>;
+  adaptiveEvidenceGroups: Partial<Record<EvidenceDomain, string[]>>;
+  hasSoftwareEvidence: boolean;
+  hasHealthLabEvidence: boolean;
+  hasEducationEvidence: boolean;
+  hasBusinessProcessEvidence: boolean;
+  hasArtCommunicationEvidence: boolean;
+  hasHumanSupportEvidence: boolean;
 };
 
-type RouteEvidenceSignals = Record<EvidenceCategory, number> & {
-  noneByCategory: Record<EvidenceCategory, number>;
-};
-
-const evidenceCategories: EvidenceCategory[] = [
-  "software",
-  "data",
-  "spatial",
-  "humanSupport",
-  "finance",
-  "industrial",
-  "environment",
-  "labLife",
-];
-
-const routeEvidenceProfiles: Record<string, RouteEvidenceProfile> = {
-  "systems-software": { required: "software", supportive: ["software", "data", "industrial"] },
-  "ingenieria-sistemas": { required: "software", supportive: ["software", "data"] },
-  "science-data-analysis": { required: "data", supportive: ["data", "software", "industrial"] },
-  "data-science": { required: "data", supportive: ["data", "software"] },
-  "ciencia-datos": { required: "data", supportive: ["data"] },
-  "architecture-spatial-design": { required: "spatial", supportive: ["spatial"] },
-  "arquitectura-diseno-espacios": { required: "spatial", supportive: ["spatial"] },
-  "interior-design-environments": { required: "spatial", supportive: ["spatial"] },
-  "industrial-design": { required: "spatial", supportive: ["spatial", "industrial"] },
-  "psychology-human-support": { supportive: ["humanSupport"] },
-  "psicologia-apoyo-humano": { supportive: ["humanSupport"] },
-  "administrative-finance": { required: "finance", supportive: ["finance", "industrial"] },
-  "contabilidad-finanzas": { required: "finance", supportive: ["finance", "data"] },
-  "industrial-processes": { required: "industrial", supportive: ["industrial", "finance", "software"] },
-  "ingenieria-industrial": { required: "industrial", supportive: ["industrial", "finance"] },
-  "environmental-engineering": { required: "environment", supportive: ["environment", "industrial"] },
-  "environmental-management": { required: "environment", supportive: ["environment", "industrial"] },
-  "natural-resources-territory": { required: "environment", supportive: ["environment"] },
-  "laboratory-science": { required: "labLife", supportive: ["labLife", "data"] },
-  "biotechnology-health-sciences": { required: "labLife", supportive: ["labLife", "data"] },
-  "veterinary-animal-health": { required: "labLife", supportive: ["labLife", "environment"] },
-};
-
-const noneQuestionCategories: Record<number, EvidenceCategory[]> = {
-  201: ["spatial", "industrial"],
-  202: ["data"],
-  203: ["spatial"],
-  204: ["humanSupport"],
-  206: ["finance", "industrial"],
-};
-
-const guidedOptionEvidence: Record<string, EvidenceCategory> = {
-  "design-products-spaces": "spatial",
-  "functional-spaces-objects": "spatial",
-  "architecture-space": "spatial",
-  "interior-industrial-design": "spatial",
-  "architecture-spatial-design": "spatial",
-  "numeric-patterns": "data",
-  "data-science": "data",
-  "science-data-analysis": "data",
-  "software-automation": "software",
-  "systems-software": "software",
-  "review-accounts": "finance",
-  "administration-finance": "finance",
-  "administrative-finance": "finance",
-  "quality-control": "industrial",
-  "industrial-processes": "industrial",
-  "personal-support": "humanSupport",
-  "psychology-support": "humanSupport",
-  "psychology-human-support": "humanSupport",
-};
-
-const evidenceKeywords: Record<EvidenceCategory, string[]> = {
+const explicitEvidenceKeywords: Record<ExplicitEvidenceDomain, string[]> = {
   software: [
     "programar",
     "programacion",
     "software",
-    "sistemas",
-    "codigo",
-    "codificar",
-    "apps",
     "aplicaciones",
-    "tecnologia digital",
-    "automatizaciones",
+    "app",
+    "sistemas digitales",
+    "soluciones digitales",
+    "codigo",
+    "bases de datos",
+    "automatizacion",
+    "plataformas digitales",
+    "algoritmos",
     "logica computacional",
   ],
-  data: [
-    "datos",
-    "patrones",
-    "tendencias",
-    "analisis numerico",
-    "analizar informacion",
-    "bases de datos",
-    "conclusiones",
-    "estadistica",
+  healthLab: [
+    "salud",
+    "laboratorio",
+    "farmacia",
+    "biologia",
+    "quimica",
+    "muestras",
+    "pacientes",
+    "clinica",
+    "medicina",
+    "biotecnologia",
+    "enfermedades",
+    "diagnostico",
+    "protocolos de salud",
   ],
-  spatial: [
-    "espacios",
-    "ambientes",
-    "interiores",
-    "planos",
-    "estructuras",
-    "maquetas",
-    "arquitectura",
-    "diseno espacial",
-    "distribuciones",
-    "espacios fisicos",
+  education: [
+    "ensenar",
+    "orientar",
+    "explicar",
+    "acompanar",
+    "aprendizaje",
+    "educacion",
+    "taller",
+    "capacitar",
+    "formacion",
+    "psicopedagogia",
+    "estudiantes",
+    "comunidad",
+  ],
+  businessProcess: [
+    "gestion",
+    "procesos",
+    "administracion",
+    "finanzas",
+    "presupuesto",
+    "registros",
+    "control",
+    "seguimiento",
+    "operaciones",
+    "coordinar",
+    "organizar",
+  ],
+  artCommunication: [
+    "disenar",
+    "diseno",
+    "piezas visuales",
+    "marcas",
+    "contenido grafico",
+    "comunicacion",
+    "videos",
+    "campanas",
+    "historias",
+    "audiencias",
+    "logos",
+    "afiches",
   ],
   humanSupport: [
-    "emociones",
+    "ayudar",
     "escuchar",
     "acompanar",
     "orientar",
+    "emociones",
+    "bienestar",
     "apoyo",
-    "bienestar emocional",
-    "conductas",
-    "conflictos personales",
+    "personas",
+    "conflictos",
+    "cuidado",
   ],
-  finance: [
+};
+
+const EVIDENCE_GROUP_KEYWORDS: Record<EvidenceDomain, string[]> = {
+  "software-tech": [
+    "programar",
+    "programacion",
+    "software",
+    "codigo",
+    "aplicaciones",
+    "apps",
+    "sistemas digitales",
+    "soluciones digitales",
+    "plataformas digitales",
+    "bases de datos",
+    "desarrollo web",
+    "desarrollo movil",
+  ],
+  "data-analysis": [
+    "datos",
+    "patrones",
+    "informacion",
+    "estadistica",
+    "analisis de datos",
+    "bases de datos",
+    "tendencias",
+    "reportes",
+    "indicadores",
+    "modelos",
+    "prediccion",
+  ],
+  automation: [
+    "automatizacion",
+    "automatizar",
+    "procesos automaticos",
+    "automatizaciones",
+  ],
+  logic: [
+    "algoritmos",
+    "logica computacional",
+    "logica",
+    "resolver fallas logicas",
+  ],
+  "science-research": [
+    "investigar",
+    "investigacion",
+    "analizar evidencias",
+    "evidencia",
+    "causas",
+    "ciencia",
+    "experimentos",
+    "metodo cientifico",
+  ],
+  "health-lab": [
+    "salud",
+    "pacientes",
+    "medicina",
+    "enfermedades",
+    "diagnostico",
+    "clinica",
+    "protocolos de salud",
+    "bienestar",
+    "habitos",
+    "nutricion",
+  ],
+  "laboratory-specific": [
+    "laboratorio",
+    "muestras",
+    "farmacia",
+    "farmaco",
+    "biologia",
+    "quimica",
+    "biotecnologia",
+    "diagnostico clinico",
+    "pruebas clinicas",
+    "analisis clinico",
+  ],
+  education: [
+    "ensenar",
+    "explicar",
+    "orientar estudiantes",
+    "estudiantes",
+    "aprendizaje",
+    "educacion",
+    "taller",
+    "capacitar",
+    "formacion",
+    "psicopedagogia",
+    "material educativo",
+    "facilitar aprendizaje",
+    "facilitar el aprendizaje",
+    "acompanar aprendizajes",
+  ],
+  "human-support": [
+    "escuchar",
+    "acompanar",
+    "emociones",
+    "bienestar emocional",
+    "apoyo psicologico",
+    "orientar personas",
+    "ayudar personas",
+    "comprender necesidades",
+    "procesos personales",
+  ],
+  "business-management": [
+    "gestion",
+    "proyectos",
+    "liderar",
+    "negociar",
+    "vender",
+    "emprendimiento",
+    "coordinar equipos",
+    "estrategia",
+    "clientes",
+    "propuesta de negocio",
+    "organizar actividades",
+  ],
+  "finance-admin": [
+    "finanzas",
     "presupuesto",
     "presupuestos",
-    "cuentas",
     "pagos",
-    "costos",
     "registros",
-    "finanzas",
-    "contabilidad",
-    "gastos",
     "documentos",
-    "registros financieros",
-  ],
-  industrial: [
-    "procesos",
-    "calidad",
-    "tiempos",
-    "produccion",
+    "control",
+    "seguimiento",
     "operaciones",
-    "logistica",
-    "eficiencia",
-    "recursos",
-    "mejorar procesos",
-    "controlar calidad",
+    "administracion",
+    "costos",
+    "contabilidad",
+  ],
+  "law-policy": [
+    "leyes",
+    "normas",
+    "justicia",
+    "casos",
+    "derechos",
+    "argumentacion juridica",
+    "argumentar",
+    "contratos",
+    "instituciones",
+    "politicas publicas",
+  ],
+  "art-design": [
+    "diseno",
+    "disenar",
+    "propuestas visuales",
+    "propuestas expresivas",
+    "piezas visuales",
+    "marcas",
+    "logos",
+    "ilustracion",
+    "contenido grafico",
+    "composicion visual",
+    "identidad visual",
+  ],
+  "audiovisual-communication": [
+    "videos",
+    "historias",
+    "campanas",
+    "entrevistas",
+    "comunicacion publica",
+    "redes",
+    "contenidos",
+    "guion",
+    "edicion",
+    "audiencias",
+  ],
+  "architecture-spatial": [
+    "espacios",
+    "ambientes",
+    "planos",
+    "distribucion",
+    "diseno espacial",
+    "interiores",
+    "edificios",
+    "maquetas",
+    "estructuras",
+    "espacios fisicos",
   ],
   environment: [
     "ambiente",
     "ambiental",
     "sostenibilidad",
-    "recursos naturales",
     "naturaleza",
-    "ecosistema",
     "territorio",
-    "plantas",
-    "animales",
+    "recursos naturales",
+    "contaminacion",
     "impacto ambiental",
+    "proyectos ambientales",
+    "ecosistema",
+    "plantas",
   ],
-  labLife: [
-    "laboratorio",
-    "muestras",
-    "farmacia",
-    "farmaco",
-    "biotecnologia",
-    "diagnostico",
-    "clinica",
-    "salud",
+  "animals-veterinary": [
     "animales",
-    "biologia",
-    "seres vivos",
+    "salud animal",
+    "veterinaria",
+    "diagnostico animal",
+    "cuidado animal",
+    "biologia animal",
+  ],
+  humanities: [
+    "leer",
+    "escribir",
+    "historia",
+    "filosofia",
+    "cultura",
+    "sociedad",
+    "pensamiento critico",
+    "interpretacion",
+    "literatura",
+  ],
+  "industrial-processes": [
+    "procesos",
+    "calidad",
+    "produccion",
+    "logistica",
+    "eficiencia",
+    "recursos",
+    "controlar calidad",
+    "mejorar procesos",
+    "tiempos",
+  ],
+  "public-community": [
+    "comunidad",
+    "problemas sociales",
+    "trabajo social",
+    "desarrollo comunitario",
+    "asuntos publicos",
+    "instituciones",
+    "politicas publicas",
+    "sociedad",
   ],
 };
 
-function obtenerPerfilEvidenciaRuta(subrouteId: string): RouteEvidenceProfile {
-  return routeEvidenceProfiles[subrouteId] ?? { supportive: [] };
+function obtenerKeywordsCoincidentes(text: string, keywords: string[]) {
+  return keywords
+    .map((keyword) => normalizarTextoDecision(keyword))
+    .filter((keyword, index, normalizedKeywords) =>
+      Boolean(keyword) && normalizedKeywords.indexOf(keyword) === index && text.includes(keyword),
+    );
 }
 
-function textoTieneEvidencia(text: string, category: EvidenceCategory) {
-  return evidenceKeywords[category].some((keyword) =>
-    text.includes(normalizarTextoDecision(keyword)),
+export function obtenerTrazabilidadEvidenciaExplicita(
+  answers: Answer[],
+): ExplicitEvidenceTrace {
+  const openAnswersText = normalizarTextoDecision(
+    obtenerRespuestasAbiertas(answers)
+      .filter((answer) => answer.answerMode !== "guided-option")
+      .flatMap((answer) => [answer.text, answer.careerReference ?? ""])
+      .join(" "),
   );
+  const adaptiveSelectedOptionsText = normalizarTextoDecision(
+    obtenerRespuestasAbiertas(answers)
+      .flatMap((answer) => [
+        answer.selectedOptionText ?? "",
+        answer.selectedOptionId ?? "",
+        answer.answerMode === "guided-option" ? answer.text : "",
+      ])
+      .join(" "),
+  );
+  const likertCommentsText = normalizarTextoDecision(
+    answers
+      .filter((answer): answer is Extract<Answer, { kind: "likert" }> => answer.kind === "likert")
+      .map((answer) => answer.comment ?? "")
+      .join(" "),
+  );
+  const evidenceText = normalizarTextoDecision(
+    [openAnswersText, adaptiveSelectedOptionsText, likertCommentsText].join(" "),
+  );
+  const matchedKeywords = Object.fromEntries(
+    (Object.keys(explicitEvidenceKeywords) as ExplicitEvidenceDomain[]).map((domain) => [
+      domain,
+      obtenerKeywordsCoincidentes(evidenceText, explicitEvidenceKeywords[domain]),
+    ]),
+  ) as Record<ExplicitEvidenceDomain, string[]>;
+  const matchedEvidenceGroups = Object.fromEntries(
+    evidenceDomains.map((domain) => [
+      domain,
+      obtenerKeywordsCoincidentes(evidenceText, EVIDENCE_GROUP_KEYWORDS[domain]),
+    ]),
+  ) as Partial<Record<EvidenceDomain, string[]>>;
+  const adaptiveEvidenceGroups = Object.fromEntries(
+    evidenceDomains.map((domain) => [
+      domain,
+      obtenerKeywordsCoincidentes(adaptiveSelectedOptionsText, EVIDENCE_GROUP_KEYWORDS[domain]),
+    ]),
+  ) as Partial<Record<EvidenceDomain, string[]>>;
+
+  return {
+    openAnswersText,
+    adaptiveSelectedOptionsText,
+    evidenceText,
+    matchedKeywords,
+    matchedEvidenceGroups,
+    adaptiveEvidenceGroups,
+    hasSoftwareEvidence: matchedKeywords.software.length > 0,
+    hasHealthLabEvidence: matchedKeywords.healthLab.length > 0,
+    hasEducationEvidence: matchedKeywords.education.length > 0,
+    hasBusinessProcessEvidence: matchedKeywords.businessProcess.length > 0,
+    hasArtCommunicationEvidence: matchedKeywords.artCommunication.length > 0,
+    hasHumanSupportEvidence: matchedKeywords.humanSupport.length > 0,
+  };
+}
+
+type RouteEvidenceRule = {
+  routeCode: string;
+  routeName: string;
+  domain: EvidenceDomain;
+  requiredEvidenceGroups: EvidenceDomain[];
+  optionalEvidenceGroups: EvidenceDomain[];
+  negativeEvidenceGroups: EvidenceDomain[];
+  minimumEvidenceRequired: number;
+  dimensionPattern: Dimension[];
+  evidenceWeight: number;
+  absencePenalty: number;
+  contradictionPenalty: number;
+};
+
+type RouteEvidenceSignals = Record<EvidenceDomain, number> & {
+  matchedKeywordsByGroup: Partial<Record<EvidenceDomain, string[]>>;
+  adaptiveKeywordsByGroup: Partial<Record<EvidenceDomain, string[]>>;
+  noneByGroup: Record<EvidenceDomain, number>;
+};
+
+const evidenceDomains = Object.keys(EVIDENCE_GROUP_KEYWORDS) as EvidenceDomain[];
+
+export const ROUTE_EVIDENCE_RULES: Record<string, RouteEvidenceRule> = {
+  "systems-software": {
+    routeCode: "systems-software",
+    routeName: "Sistemas y Software",
+    domain: "software-tech",
+    requiredEvidenceGroups: ["software-tech"],
+    optionalEvidenceGroups: ["data-analysis", "automation", "logic"],
+    negativeEvidenceGroups: ["health-lab", "architecture-spatial", "environment"],
+    minimumEvidenceRequired: 1,
+    dimensionPattern: ["investigativo", "realista", "convencional"],
+    evidenceWeight: 1,
+    absencePenalty: 28,
+    contradictionPenalty: 18,
+  },
+  "science-data-analysis": {
+    routeCode: "science-data-analysis",
+    routeName: "Ciencia de Datos y Análisis",
+    domain: "data-analysis",
+    requiredEvidenceGroups: ["data-analysis"],
+    optionalEvidenceGroups: ["science-research", "software-tech", "logic"],
+    negativeEvidenceGroups: ["health-lab", "architecture-spatial"],
+    minimumEvidenceRequired: 1,
+    dimensionPattern: ["investigativo", "convencional", "apertura"],
+    evidenceWeight: 1,
+    absencePenalty: 24,
+    contradictionPenalty: 16,
+  },
+  "industrial-processes": {
+    routeCode: "industrial-processes",
+    routeName: "Industrial, Procesos y Operaciones",
+    domain: "industrial-processes",
+    requiredEvidenceGroups: ["industrial-processes"],
+    optionalEvidenceGroups: ["finance-admin", "automation", "business-management"],
+    negativeEvidenceGroups: ["art-design", "human-support"],
+    minimumEvidenceRequired: 1,
+    dimensionPattern: ["realista", "convencional", "responsabilidad"],
+    evidenceWeight: 1,
+    absencePenalty: 24,
+    contradictionPenalty: 14,
+  },
+  "mechatronics-applied-technology": {
+    routeCode: "mechatronics-applied-technology",
+    routeName: "Mecatrónica y Tecnología Aplicada",
+    domain: "automation",
+    requiredEvidenceGroups: ["automation"],
+    optionalEvidenceGroups: ["industrial-processes", "software-tech", "logic"],
+    negativeEvidenceGroups: ["human-support", "art-design"],
+    minimumEvidenceRequired: 1,
+    dimensionPattern: ["realista", "investigativo", "responsabilidad"],
+    evidenceWeight: 1,
+    absencePenalty: 22,
+    contradictionPenalty: 14,
+  },
+  "architecture-spatial-design": {
+    routeCode: "architecture-spatial-design",
+    routeName: "Arquitectura y Diseño Espacial",
+    domain: "architecture-spatial",
+    requiredEvidenceGroups: ["architecture-spatial"],
+    optionalEvidenceGroups: ["art-design", "industrial-processes"],
+    negativeEvidenceGroups: ["software-tech", "health-lab"],
+    minimumEvidenceRequired: 1,
+    dimensionPattern: ["artistico", "realista", "apertura"],
+    evidenceWeight: 1.1,
+    absencePenalty: 30,
+    contradictionPenalty: 20,
+  },
+  "graphic-design": {
+    routeCode: "graphic-design",
+    routeName: "Diseño Gráfico y Visual",
+    domain: "art-design",
+    requiredEvidenceGroups: ["art-design"],
+    optionalEvidenceGroups: ["audiovisual-communication", "business-management"],
+    negativeEvidenceGroups: ["health-lab", "finance-admin"],
+    minimumEvidenceRequired: 1,
+    dimensionPattern: ["artistico", "apertura", "responsabilidad"],
+    evidenceWeight: 1,
+    absencePenalty: 24,
+    contradictionPenalty: 15,
+  },
+  "communication-audiovisual": {
+    routeCode: "communication-audiovisual",
+    routeName: "Comunicación Audiovisual y Contenidos",
+    domain: "audiovisual-communication",
+    requiredEvidenceGroups: ["audiovisual-communication"],
+    optionalEvidenceGroups: ["art-design", "humanities"],
+    negativeEvidenceGroups: ["finance-admin", "health-lab"],
+    minimumEvidenceRequired: 1,
+    dimensionPattern: ["artistico", "social", "extraversion"],
+    evidenceWeight: 1,
+    absencePenalty: 22,
+    contradictionPenalty: 14,
+  },
+  "environmental-engineering": {
+    routeCode: "environmental-engineering",
+    routeName: "Ingeniería Ambiental y Sostenibilidad",
+    domain: "environment",
+    requiredEvidenceGroups: ["environment"],
+    optionalEvidenceGroups: ["science-research", "industrial-processes"],
+    negativeEvidenceGroups: ["software-tech", "finance-admin"],
+    minimumEvidenceRequired: 1,
+    dimensionPattern: ["investigativo", "realista", "responsabilidad"],
+    evidenceWeight: 1.05,
+    absencePenalty: 30,
+    contradictionPenalty: 18,
+  },
+  "environmental-management": {
+    routeCode: "environmental-management",
+    routeName: "Gestión Ambiental y Proyectos",
+    domain: "environment",
+    requiredEvidenceGroups: ["environment"],
+    optionalEvidenceGroups: ["business-management", "public-community"],
+    negativeEvidenceGroups: ["software-tech", "finance-admin"],
+    minimumEvidenceRequired: 1,
+    dimensionPattern: ["investigativo", "emprendedor", "responsabilidad"],
+    evidenceWeight: 1,
+    absencePenalty: 28,
+    contradictionPenalty: 16,
+  },
+  "natural-resources-territory": {
+    routeCode: "natural-resources-territory",
+    routeName: "Recursos Naturales y Territorio",
+    domain: "environment",
+    requiredEvidenceGroups: ["environment"],
+    optionalEvidenceGroups: ["public-community", "animals-veterinary"],
+    negativeEvidenceGroups: ["software-tech", "finance-admin"],
+    minimumEvidenceRequired: 1,
+    dimensionPattern: ["investigativo", "realista", "amabilidad"],
+    evidenceWeight: 1,
+    absencePenalty: 26,
+    contradictionPenalty: 15,
+  },
+  "laboratory-science": {
+    routeCode: "laboratory-science",
+    routeName: "Laboratorio, Farmacia e Investigación Aplicada",
+    domain: "laboratory-specific",
+    requiredEvidenceGroups: ["laboratory-specific"],
+    optionalEvidenceGroups: ["health-lab", "science-research", "industrial-processes"],
+    negativeEvidenceGroups: ["software-tech", "environment", "architecture-spatial"],
+    minimumEvidenceRequired: 1,
+    dimensionPattern: ["investigativo", "convencional", "responsabilidad"],
+    evidenceWeight: 1.05,
+    absencePenalty: 30,
+    contradictionPenalty: 18,
+  },
+  "biotechnology-health-sciences": {
+    routeCode: "biotechnology-health-sciences",
+    routeName: "Biotecnología y Ciencias de la Salud",
+    domain: "laboratory-specific",
+    requiredEvidenceGroups: ["laboratory-specific"],
+    optionalEvidenceGroups: ["health-lab", "science-research"],
+    negativeEvidenceGroups: ["software-tech", "environment"],
+    minimumEvidenceRequired: 1,
+    dimensionPattern: ["investigativo", "apertura", "responsabilidad"],
+    evidenceWeight: 1,
+    absencePenalty: 28,
+    contradictionPenalty: 16,
+  },
+  "nutrition-health-wellbeing": {
+    routeCode: "nutrition-health-wellbeing",
+    routeName: "Nutrición, Salud y Bienestar",
+    domain: "health-lab",
+    requiredEvidenceGroups: ["health-lab"],
+    optionalEvidenceGroups: ["human-support", "education"],
+    negativeEvidenceGroups: ["software-tech", "finance-admin"],
+    minimumEvidenceRequired: 1,
+    dimensionPattern: ["social", "investigativo", "amabilidad"],
+    evidenceWeight: 1,
+    absencePenalty: 24,
+    contradictionPenalty: 14,
+  },
+  "veterinary-animal-health": {
+    routeCode: "veterinary-animal-health",
+    routeName: "Veterinaria y Salud Animal",
+    domain: "animals-veterinary",
+    requiredEvidenceGroups: ["animals-veterinary"],
+    optionalEvidenceGroups: ["health-lab", "environment"],
+    negativeEvidenceGroups: ["software-tech", "finance-admin"],
+    minimumEvidenceRequired: 1,
+    dimensionPattern: ["investigativo", "realista", "amabilidad"],
+    evidenceWeight: 1.1,
+    absencePenalty: 32,
+    contradictionPenalty: 18,
+  },
+  "psychology-human-support": {
+    routeCode: "psychology-human-support",
+    routeName: "Psicología y Apoyo Humano",
+    domain: "human-support",
+    requiredEvidenceGroups: ["human-support"],
+    optionalEvidenceGroups: ["health-lab", "education"],
+    negativeEvidenceGroups: ["software-tech", "finance-admin"],
+    minimumEvidenceRequired: 1,
+    dimensionPattern: ["social", "amabilidad", "responsabilidad"],
+    evidenceWeight: 1,
+    absencePenalty: 24,
+    contradictionPenalty: 14,
+  },
+  "educacion-orientacion-formacion": {
+    routeCode: "educacion-orientacion-formacion",
+    routeName: "Educación, Orientación y Formación",
+    domain: "education",
+    requiredEvidenceGroups: ["education"],
+    optionalEvidenceGroups: ["human-support", "audiovisual-communication"],
+    negativeEvidenceGroups: ["software-tech", "finance-admin"],
+    minimumEvidenceRequired: 1,
+    dimensionPattern: ["social", "extraversion", "amabilidad"],
+    evidenceWeight: 1,
+    absencePenalty: 24,
+    contradictionPenalty: 14,
+  },
+  "education-teaching": {
+    routeCode: "education-teaching",
+    routeName: "Educación y Enseñanza",
+    domain: "education",
+    requiredEvidenceGroups: ["education"],
+    optionalEvidenceGroups: ["human-support", "audiovisual-communication"],
+    negativeEvidenceGroups: ["software-tech", "finance-admin"],
+    minimumEvidenceRequired: 1,
+    dimensionPattern: ["social", "extraversion", "amabilidad"],
+    evidenceWeight: 1,
+    absencePenalty: 24,
+    contradictionPenalty: 14,
+  },
+  "psychopedagogy-orientation": {
+    routeCode: "psychopedagogy-orientation",
+    routeName: "Psicopedagogía y Orientación Educativa",
+    domain: "education",
+    requiredEvidenceGroups: ["education"],
+    optionalEvidenceGroups: ["human-support"],
+    negativeEvidenceGroups: ["software-tech", "finance-admin"],
+    minimumEvidenceRequired: 1,
+    dimensionPattern: ["social", "amabilidad", "responsabilidad"],
+    evidenceWeight: 1,
+    absencePenalty: 24,
+    contradictionPenalty: 14,
+  },
+  "literature-writing-cultural-studies": {
+    routeCode: "literature-writing-cultural-studies",
+    routeName: "Literatura, Escritura y Estudios Culturales",
+    domain: "humanities",
+    requiredEvidenceGroups: ["humanities"],
+    optionalEvidenceGroups: ["art-design", "education"],
+    negativeEvidenceGroups: ["software-tech", "finance-admin"],
+    minimumEvidenceRequired: 1,
+    dimensionPattern: ["artistico", "investigativo", "apertura"],
+    evidenceWeight: 1,
+    absencePenalty: 22,
+    contradictionPenalty: 13,
+  },
+  "history-philosophy-humanities": {
+    routeCode: "history-philosophy-humanities",
+    routeName: "Historia, Filosofía y Humanidades",
+    domain: "humanities",
+    requiredEvidenceGroups: ["humanities"],
+    optionalEvidenceGroups: ["public-community", "education"],
+    negativeEvidenceGroups: ["software-tech", "finance-admin"],
+    minimumEvidenceRequired: 1,
+    dimensionPattern: ["investigativo", "social", "apertura"],
+    evidenceWeight: 1,
+    absencePenalty: 22,
+    contradictionPenalty: 13,
+  },
+  "journalism-public-communication": {
+    routeCode: "journalism-public-communication",
+    routeName: "Periodismo y Comunicación Publica",
+    domain: "audiovisual-communication",
+    requiredEvidenceGroups: ["audiovisual-communication"],
+    optionalEvidenceGroups: ["humanities", "public-community"],
+    negativeEvidenceGroups: ["health-lab", "finance-admin"],
+    minimumEvidenceRequired: 1,
+    dimensionPattern: ["artistico", "social", "investigativo"],
+    evidenceWeight: 1,
+    absencePenalty: 22,
+    contradictionPenalty: 13,
+  },
+  "social-work-community-development": {
+    routeCode: "social-work-community-development",
+    routeName: "Trabajo Social y Desarrollo Comunitario",
+    domain: "public-community",
+    requiredEvidenceGroups: ["public-community"],
+    optionalEvidenceGroups: ["human-support", "education"],
+    negativeEvidenceGroups: ["software-tech", "finance-admin"],
+    minimumEvidenceRequired: 1,
+    dimensionPattern: ["social", "amabilidad", "responsabilidad"],
+    evidenceWeight: 1,
+    absencePenalty: 24,
+    contradictionPenalty: 14,
+  },
+  "social-research": {
+    routeCode: "social-research",
+    routeName: "Sociología, Antropología e Investigación Social",
+    domain: "public-community",
+    requiredEvidenceGroups: ["public-community"],
+    optionalEvidenceGroups: ["science-research", "humanities"],
+    negativeEvidenceGroups: ["software-tech", "finance-admin"],
+    minimumEvidenceRequired: 1,
+    dimensionPattern: ["social", "investigativo", "apertura"],
+    evidenceWeight: 1,
+    absencePenalty: 22,
+    contradictionPenalty: 13,
+  },
+  "international-relations-public-policy": {
+    routeCode: "international-relations-public-policy",
+    routeName: "Relaciones Internacionales y Politicas Publicas",
+    domain: "law-policy",
+    requiredEvidenceGroups: ["law-policy"],
+    optionalEvidenceGroups: ["public-community", "business-management"],
+    negativeEvidenceGroups: ["software-tech", "health-lab"],
+    minimumEvidenceRequired: 1,
+    dimensionPattern: ["emprendedor", "social", "investigativo"],
+    evidenceWeight: 1,
+    absencePenalty: 24,
+    contradictionPenalty: 14,
+  },
+  "business-project-management": {
+    routeCode: "business-project-management",
+    routeName: "Negocios y Gestión de Proyectos",
+    domain: "business-management",
+    requiredEvidenceGroups: ["business-management"],
+    optionalEvidenceGroups: ["finance-admin", "public-community"],
+    negativeEvidenceGroups: ["health-lab", "environment"],
+    minimumEvidenceRequired: 1,
+    dimensionPattern: ["emprendedor", "convencional", "extraversion"],
+    evidenceWeight: 1,
+    absencePenalty: 24,
+    contradictionPenalty: 14,
+  },
+  "derecho-ciencias-juridicas": {
+    routeCode: "derecho-ciencias-juridicas",
+    routeName: "Derecho y Ciencias Jurídicas",
+    domain: "law-policy",
+    requiredEvidenceGroups: ["law-policy"],
+    optionalEvidenceGroups: ["public-community", "business-management"],
+    negativeEvidenceGroups: ["software-tech", "health-lab", "art-design"],
+    minimumEvidenceRequired: 1,
+    dimensionPattern: ["emprendedor", "convencional", "responsabilidad"],
+    evidenceWeight: 1,
+    absencePenalty: 28,
+    contradictionPenalty: 16,
+  },
+  "administrative-finance": {
+    routeCode: "administrative-finance",
+    routeName: "Finanzas, Administración y Procesos",
+    domain: "finance-admin",
+    requiredEvidenceGroups: ["finance-admin"],
+    optionalEvidenceGroups: ["data-analysis", "industrial-processes"],
+    negativeEvidenceGroups: ["human-support", "art-design", "health-lab"],
+    minimumEvidenceRequired: 1,
+    dimensionPattern: ["convencional", "emprendedor", "responsabilidad"],
+    evidenceWeight: 1,
+    absencePenalty: 26,
+    contradictionPenalty: 15,
+  },
+};
+
+const noneQuestionCategories: Record<number, EvidenceDomain[]> = {
+  201: ["architecture-spatial", "industrial-processes"],
+  202: ["data-analysis", "science-research", "health-lab"],
+  203: ["art-design", "architecture-spatial", "audiovisual-communication"],
+  204: ["human-support", "education"],
+  205: ["business-management", "law-policy"],
+  206: ["finance-admin", "industrial-processes"],
+  309: [
+    "education",
+    "health-lab",
+    "environment",
+    "art-design",
+    "business-management",
+  ],
+};
+
+const guidedOptionEvidence: Record<string, EvidenceDomain[]> = {
+  "design-products-spaces": ["architecture-spatial"],
+  "functional-spaces-objects": ["architecture-spatial"],
+  "architecture-space": ["architecture-spatial"],
+  "interior-industrial-design": ["architecture-spatial", "industrial-processes"],
+  "architecture-spatial-design": ["architecture-spatial"],
+  "numeric-patterns": ["data-analysis"],
+  "data-science": ["data-analysis"],
+  "science-data-analysis": ["data-analysis", "science-research"],
+  "laboratory-evidence": ["laboratory-specific", "health-lab", "science-research"],
+  "health-diagnosis": ["health-lab"],
+  "software-automation": ["software-tech", "automation"],
+  "systems-software": ["software-tech"],
+  "review-accounts": ["finance-admin"],
+  "administration-finance": ["finance-admin"],
+  "administrative-finance": ["finance-admin"],
+  "quality-control": ["industrial-processes"],
+  "industrial-processes": ["industrial-processes"],
+  "personal-support": ["human-support"],
+  "psychology-support": ["human-support"],
+  "psychology-human-support": ["human-support"],
+  "teach-explain": ["education"],
+  "education-teaching": ["education"],
+  "health-care-support": ["health-lab", "human-support"],
+  "community-social": ["public-community"],
+  "legal-cases": ["law-policy"],
+  "public-policy": ["law-policy", "public-community"],
+  "graphic-visual": ["art-design"],
+  "narrative-content": ["audiovisual-communication", "humanities"],
+  "communicative-solutions": ["audiovisual-communication", "education"],
+  "natural-resources": ["environment"],
+  "business-projects": ["business-management"],
+};
+
+function obtenerReglaEvidenciaRuta(subroute: VocationalSubrouteMetadata): RouteEvidenceRule {
+  return ROUTE_EVIDENCE_RULES[subroute.id] ?? {
+    routeCode: subroute.id,
+    routeName: subroute.name,
+    domain: inferirDominioSubruta(subroute),
+    requiredEvidenceGroups: [],
+    optionalEvidenceGroups: [],
+    negativeEvidenceGroups: [],
+    minimumEvidenceRequired: 0,
+    dimensionPattern: [...subroute.coreRiasec, ...subroute.supportBigFive],
+    evidenceWeight: 0.7,
+    absencePenalty: 0,
+    contradictionPenalty: 10,
+  };
+}
+
+function inferirDominioSubruta(subroute: VocationalSubrouteMetadata): EvidenceDomain {
+  if (subroute.familyId.includes("environment")) return "environment";
+  if (subroute.familyId.includes("laboratory") || subroute.familyId.includes("health")) return "health-lab";
+  if (subroute.familyId.includes("education")) return "education";
+  if (subroute.familyId.includes("law")) return "law-policy";
+  if (subroute.familyId.includes("administration")) return "finance-admin";
+  if (subroute.familyId.includes("business")) return "business-management";
+  if (subroute.familyId.includes("humanities")) return "humanities";
+  if (subroute.familyId.includes("social")) return "public-community";
+  if (subroute.familyId.includes("design")) return "art-design";
+  if (subroute.familyId.includes("science")) return "science-research";
+  return "science-research";
 }
 
 function esRespuestaNinguna(answer: Answer) {
@@ -918,19 +1616,21 @@ function esRespuestaNinguna(answer: Answer) {
 }
 
 function obtenerSenalesEvidenciaRutas(answers: Answer[]): RouteEvidenceSignals {
-  const signals = evidenceCategories.reduce(
+  const signals = evidenceDomains.reduce(
     (acc, category) => ({ ...acc, [category]: 0 }),
-    {} as Record<EvidenceCategory, number>,
+    {} as Record<EvidenceDomain, number>,
   );
-  const noneByCategory = evidenceCategories.reduce(
+  const noneByGroup = evidenceDomains.reduce(
     (acc, category) => ({ ...acc, [category]: 0 }),
-    {} as Record<EvidenceCategory, number>,
+    {} as Record<EvidenceDomain, number>,
   );
+  const matchedKeywordsByGroup: Partial<Record<EvidenceDomain, string[]>> = {};
+  const adaptiveKeywordsByGroup: Partial<Record<EvidenceDomain, string[]>> = {};
 
   obtenerRespuestasAbiertas(answers).forEach((answer) => {
     if (esRespuestaNinguna(answer)) {
       (noneQuestionCategories[answer.questionId] ?? []).forEach((category) => {
-        noneByCategory[category] += 1;
+        noneByGroup[category] += 1;
       });
       return;
     }
@@ -943,22 +1643,63 @@ function obtenerSenalesEvidenciaRutas(answers: Answer[]): RouteEvidenceSignals {
       ].join(" "),
     );
 
-    const guidedCategory = answer.selectedOptionId
-      ? guidedOptionEvidence[answer.selectedOptionId]
+    const guidedCategories = answer.selectedOptionId
+      ? guidedOptionEvidence[answer.selectedOptionId] ?? []
       : undefined;
 
-    if (guidedCategory) {
-      signals[guidedCategory] += 1.2;
-    }
+    guidedCategories?.forEach((category) => {
+      signals[category] += 1.2;
+      adaptiveKeywordsByGroup[category] = Array.from(
+        new Set([...(adaptiveKeywordsByGroup[category] ?? []), answer.selectedOptionId ?? answer.text]),
+      );
+    });
 
-    evidenceCategories.forEach((category) => {
-      if (textoTieneEvidencia(text, category)) {
+    evidenceDomains.forEach((category) => {
+      const matched = obtenerKeywordsCoincidentes(text, EVIDENCE_GROUP_KEYWORDS[category]);
+      if (matched.length > 0) {
         signals[category] += answer.answerMode === "guided-option" ? 1 : 1.4;
+        matchedKeywordsByGroup[category] = Array.from(
+          new Set([...(matchedKeywordsByGroup[category] ?? []), ...matched]),
+        );
       }
     });
   });
 
-  return { ...signals, noneByCategory };
+  return { ...signals, matchedKeywordsByGroup, adaptiveKeywordsByGroup, noneByGroup };
+}
+
+function obtenerRazonesEvidenciaSubruta(
+  subroute: VocationalSubrouteMetadata,
+  evidence: RouteEvidenceSignals,
+  averages: Record<Dimension, number>,
+  requiredEvidenceMet: boolean,
+) {
+  const rule = obtenerReglaEvidenciaRuta(subroute);
+  const reasons: string[] = [];
+  const matchedEvidence = obtenerEvidenciaCoincidente(rule, evidence);
+  const contradictionEvidence = obtenerEvidenciaContradictoria(rule, evidence);
+
+  if (matchedEvidence.length > 0) {
+    reasons.push(`Se detecto evidencia explicita de dominio: ${matchedEvidence.join(", ")}.`);
+  }
+
+  if (!requiredEvidenceMet && rule.requiredEvidenceGroups.length > 0) {
+    reasons.push(`Falta evidencia explicita requerida: ${obtenerEvidenciaFaltante(rule, evidence).join(", ")}.`);
+  }
+
+  if (contradictionEvidence.length > 0) {
+    reasons.push(`Hay evidencia de otro dominio incompatible: ${contradictionEvidence.join(", ")}.`);
+  }
+
+  if (
+    rule.requiredEvidenceGroups.length > 0 &&
+    matchedEvidence.length === 0 &&
+    promediarDimensiones(averages, rule.dimensionPattern) >= 3.5
+  ) {
+    reasons.push("El patron dimensional es compatible, pero la ruta queda como opcion por explorar hasta tener evidencia explicita.");
+  }
+
+  return reasons;
 }
 
 function calcularDimensionScoreSubruta(
@@ -990,57 +1731,107 @@ function calcularCombinedPatternScoreSubruta(
   return limitarPuntaje(Math.round((bestPattern.score / 5) * 100));
 }
 
-function calcularExplicitEvidenceScoreSubruta(
-  subroute: VocationalSubrouteMetadata,
+function obtenerEvidenciaCoincidente(
+  rule: RouteEvidenceRule,
   evidence: RouteEvidenceSignals,
 ) {
-  const profile = obtenerPerfilEvidenciaRuta(subroute.id);
-  if (profile.supportive.length === 0) return 45;
-
-  const strongestSignal = Math.max(
-    ...profile.supportive.map((category) => evidence[category] ?? 0),
+  return Array.from(
+    new Set(
+      [rule.domain, ...rule.requiredEvidenceGroups, ...rule.optionalEvidenceGroups].filter(
+        (domain) => (evidence[domain] ?? 0) > 0,
+      ),
+    ),
   );
-
-  return limitarPuntaje(Math.round(Math.min(100, strongestSignal * 34)));
 }
 
-function calcularAdaptiveConfirmationScoreSubruta(
-  subroute: VocationalSubrouteMetadata,
+function obtenerEvidenciaFaltante(
+  rule: RouteEvidenceRule,
   evidence: RouteEvidenceSignals,
 ) {
-  const profile = obtenerPerfilEvidenciaRuta(subroute.id);
-  if (profile.supportive.length === 0) return 35;
+  return rule.requiredEvidenceGroups.filter((domain) => (evidence[domain] ?? 0) <= 0);
+}
 
-  const guidedStrength = profile.supportive.reduce((total, category) => {
-    const nonePenalty = evidence.noneByCategory[category] > 0 ? -1.5 : 0;
-    return total + Math.min(2, evidence[category]) + nonePenalty;
+function obtenerEvidenciaContradictoria(
+  rule: RouteEvidenceRule,
+  evidence: RouteEvidenceSignals,
+) {
+  return rule.negativeEvidenceGroups.filter((domain) => (evidence[domain] ?? 0) > 0);
+}
+
+function cumpleEvidenciaRequerida(rule: RouteEvidenceRule, evidence: RouteEvidenceSignals) {
+  if (rule.requiredEvidenceGroups.length === 0) return true;
+
+  const matchedRequired = rule.requiredEvidenceGroups.filter(
+    (domain) => (evidence[domain] ?? 0) > 0,
+  ).length;
+
+  return matchedRequired >= rule.minimumEvidenceRequired;
+}
+
+function calcularExplicitEvidenceScoreRuta(
+  rule: RouteEvidenceRule,
+  evidence: RouteEvidenceSignals,
+) {
+  if (rule.requiredEvidenceGroups.length === 0 && rule.optionalEvidenceGroups.length === 0) {
+    return 45;
+  }
+
+  const requiredStrength = rule.requiredEvidenceGroups.reduce(
+    (total, domain) => total + Math.min(2.2, evidence[domain] ?? 0),
+    0,
+  );
+  const optionalStrength = rule.optionalEvidenceGroups.reduce(
+    (total, domain) => total + Math.min(1.4, evidence[domain] ?? 0),
+    0,
+  );
+  const requiredScore =
+    rule.requiredEvidenceGroups.length > 0
+      ? (requiredStrength / Math.max(rule.requiredEvidenceGroups.length, 1)) * 34
+      : 20;
+  const optionalScore = optionalStrength * 16;
+
+  return limitarPuntaje(Math.round((requiredScore + optionalScore) * rule.evidenceWeight));
+}
+
+function calcularAdaptiveConfirmationScoreRuta(
+  rule: RouteEvidenceRule,
+  evidence: RouteEvidenceSignals,
+) {
+  const groups = Array.from(
+    new Set([rule.domain, ...rule.requiredEvidenceGroups, ...rule.optionalEvidenceGroups]),
+  );
+
+  if (groups.length === 0) return 35;
+
+  const guidedStrength = groups.reduce((total, category) => {
+    const nonePenalty = evidence.noneByGroup[category] > 0 ? -1.5 : 0;
+    const adaptiveBoost = (evidence.adaptiveKeywordsByGroup[category]?.length ?? 0) > 0 ? 1 : 0;
+    return total + Math.min(2, evidence[category]) + adaptiveBoost + nonePenalty;
   }, 0);
 
-  return limitarPuntaje(Math.round(Math.max(0, guidedStrength) * 25));
+  return limitarPuntaje(Math.round(Math.max(0, guidedStrength) * 18));
 }
 
 function calcularPenaltyScoreSubruta({
-  subroute,
+  rule,
   averages,
   evidence,
   explicitEvidenceScore,
   semanticMatches,
   broadInterestPattern,
 }: {
-  subroute: VocationalSubrouteMetadata;
+  rule: RouteEvidenceRule;
   averages: Record<Dimension, number>;
   evidence: RouteEvidenceSignals;
   explicitEvidenceScore: number;
   semanticMatches: string[];
   broadInterestPattern: boolean;
 }) {
-  const profile = obtenerPerfilEvidenciaRuta(subroute.id);
-  const requiredEvidenceMet = profile.required
-    ? (evidence[profile.required] ?? 0) > 0
-    : true;
+  const requiredEvidenceMet = cumpleEvidenciaRequerida(rule, evidence);
+  const contradictionEvidence = obtenerEvidenciaContradictoria(rule, evidence);
   let penalty = 0;
 
-  if (profile.required && !requiredEvidenceMet) penalty += 26;
+  if (!requiredEvidenceMet) penalty += rule.absencePenalty;
   if (broadInterestPattern && explicitEvidenceScore < 35) penalty += 12;
   if (
     riasecDimensions.filter((dimension) => averages[dimension] >= 4).length >= 4 &&
@@ -1049,34 +1840,13 @@ function calcularPenaltyScoreSubruta({
     penalty += 10;
   }
 
-  profile.supportive.forEach((category) => {
-    if (evidence.noneByCategory[category] > 0) {
-      penalty += 12 * evidence.noneByCategory[category];
+  [rule.domain, ...rule.requiredEvidenceGroups, ...rule.optionalEvidenceGroups].forEach((category) => {
+    if (evidence.noneByGroup[category] > 0) {
+      penalty += 12 * evidence.noneByGroup[category];
     }
   });
 
-  if (
-    subroute.id === "architecture-spatial-design" &&
-    ((evidence.software > 0 || evidence.data > 0) && !requiredEvidenceMet)
-  ) {
-    penalty += 18;
-  }
-
-  if (
-    subroute.id === "administrative-finance" &&
-    evidence.industrial > 0 &&
-    evidence.finance <= 0
-  ) {
-    penalty += 12;
-  }
-
-  if (
-    subroute.id === "industrial-processes" &&
-    evidence.finance > 0 &&
-    evidence.industrial <= 0
-  ) {
-    penalty += 12;
-  }
+  penalty += contradictionEvidence.length * rule.contradictionPenalty;
 
   if (semanticMatches.length === 0 && explicitEvidenceScore < 20) penalty += 6;
 
@@ -1102,12 +1872,13 @@ function calcularCompatibilidadCorregidaSubruta({
   broadInterestPattern: boolean;
 }): RouteCompatibilityTrace {
   const evidence = obtenerSenalesEvidenciaRutas(answers);
+  const rule = obtenerReglaEvidenciaRuta(subroute);
   const dimensionScore = calcularDimensionScoreSubruta(subroute, averages);
   const combinedPatternScore = calcularCombinedPatternScoreSubruta(subroute, patterns);
-  const explicitEvidenceScore = calcularExplicitEvidenceScoreSubruta(subroute, evidence);
-  const adaptiveConfirmationScore = calcularAdaptiveConfirmationScoreSubruta(subroute, evidence);
+  const explicitEvidenceScore = calcularExplicitEvidenceScoreRuta(rule, evidence);
+  const adaptiveConfirmationScore = calcularAdaptiveConfirmationScoreRuta(rule, evidence);
   const { penaltyScore, requiredEvidenceMet } = calcularPenaltyScoreSubruta({
-    subroute,
+    rule,
     averages,
     evidence,
     explicitEvidenceScore,
@@ -1123,9 +1894,20 @@ function calcularCompatibilidadCorregidaSubruta({
         penaltyScore,
     ),
   );
+  const evidenceReasons = obtenerRazonesEvidenciaSubruta(
+    subroute,
+    evidence,
+    averages,
+    requiredEvidenceMet,
+  );
+  const matchedEvidence = obtenerEvidenciaCoincidente(rule, evidence);
+  const missingEvidence = obtenerEvidenciaFaltante(rule, evidence);
+  const contradictionEvidence = obtenerEvidenciaContradictoria(rule, evidence);
 
   return {
+    routeCode: subroute.id,
     routeName: subroute.name,
+    domain: rule.domain,
     dimensionScore,
     combinedPatternScore,
     explicitEvidenceScore,
@@ -1133,6 +1915,11 @@ function calcularCompatibilidadCorregidaSubruta({
     penaltyScore,
     finalScore,
     requiredEvidenceMet,
+    ...(matchedEvidence.length ? { matchedEvidence } : {}),
+    ...(missingEvidence.length ? { missingEvidence } : {}),
+    ...(contradictionEvidence.length ? { contradictionEvidence } : {}),
+    ...(evidenceReasons.length ? { reasons: evidenceReasons } : {}),
+    ...(evidenceReasons.length ? { evidenceReasons } : {}),
   };
 }
 
@@ -1140,6 +1927,14 @@ function limitarCompatibilidadAltaSinEvidencia(
   trace: RouteCompatibilityTrace,
   diagnostics: ReturnType<typeof obtenerDiagnosticosAdaptativos>,
 ) {
+  if (!trace.requiredEvidenceMet && trace.explicitEvidenceScore < 35) {
+    return Math.min(trace.finalScore, 62);
+  }
+
+  if (trace.requiredEvidenceMet && trace.explicitEvidenceScore >= 60) {
+    return trace.finalScore;
+  }
+
   if (
     diagnostics.highUncertainty ||
     diagnostics.lowDifferentiation ||
@@ -1510,34 +2305,10 @@ function obtenerSubrutasConcretas({
   diagnostics: ReturnType<typeof obtenerDiagnosticosAdaptativos>;
 }) {
   const mainProfileIds = ranked.slice(0, 4).map((profile) => profile.id);
-  const signalPrioritySubroutes = obtenerSubrutasPrioridadPorSenales(
-    answers,
-    averages,
-    semanticFocus,
-  );
-  const broadTieBreakerChoice = obtenerOpcionDesempateAmplio(answers);
-
-  if (signalPrioritySubroutes.length > 0) {
-    return signalPrioritySubroutes
-      .map((subroute) => {
-        const rawAffinity = subroute.relevance;
-        const relevance = broadTieBreakerChoice
-          ? rawAffinity
-          : ajustarAfinidadSubruta(subroute.id, rawAffinity, answers, averages);
-
-        return {
-          ...subroute,
-          rawAffinity,
-          relevance,
-        };
-      })
-      .filter((subroute) => subroute.relevance >= 45)
-      .sort((a, b) => b.relevance - a.relevance)
-      .slice(0, 3);
-  }
+  mostrarTrazabilidadEvidenciaExplicitaEnDesarrollo(answers);
 
   const patterns = obtenerPatronesVocacionalesOrdenados(averages);
-  const traceableSubroutes = vocationalSubroutes
+  const allTraceableSubroutes = vocationalSubroutes
     .map((subroute) => {
       const semanticMatches = subroute.semanticFocus.filter((focus) => semanticFocus.includes(focus));
       const profileRelated = subroute.relatedProfileIds.some((profileId) =>
@@ -1577,12 +2348,13 @@ function obtenerSubrutasConcretas({
         semanticMatches,
         profileRelated,
       };
-    })
+    });
+  mostrarTrazabilidadCompatibilidadEnDesarrollo(allTraceableSubroutes);
+
+  const traceableSubroutes = allTraceableSubroutes
     .filter((item) => item.relevance >= 45)
     .sort((a, b) => b.relevance - a.relevance)
     .slice(0, broadInterestPattern ? 3 : 4);
-
-  mostrarTrazabilidadCompatibilidadEnDesarrollo(traceableSubroutes.slice(0, 5));
 
   return traceableSubroutes
     .map(({ subroute, rawAffinity, relevance, compatibilityTrace, semanticMatches, profileRelated }) =>
@@ -1597,6 +2369,14 @@ function obtenerSubrutasConcretas({
     );
 }
 
+function mostrarTrazabilidadEvidenciaExplicitaEnDesarrollo(answers: Answer[]) {
+  if (process.env.NODE_ENV !== "development") return;
+
+  const trace = obtenerTrazabilidadEvidenciaExplicita(answers);
+
+  console.debug("[vocational:evidence]", trace);
+}
+
 function mostrarTrazabilidadCompatibilidadEnDesarrollo(
   routes: Array<{ compatibilityTrace: RouteCompatibilityTrace }>,
 ) {
@@ -1604,7 +2384,9 @@ function mostrarTrazabilidadCompatibilidadEnDesarrollo(
 
   console.table(
     routes.map(({ compatibilityTrace }) => ({
+      routeCode: compatibilityTrace.routeCode,
       routeName: compatibilityTrace.routeName,
+      domain: compatibilityTrace.domain,
       dimensionScore: compatibilityTrace.dimensionScore,
       combinedPatternScore: compatibilityTrace.combinedPatternScore,
       explicitEvidenceScore: compatibilityTrace.explicitEvidenceScore,
@@ -1612,6 +2394,10 @@ function mostrarTrazabilidadCompatibilidadEnDesarrollo(
       penaltyScore: compatibilityTrace.penaltyScore,
       finalScore: compatibilityTrace.finalScore,
       requiredEvidenceMet: compatibilityTrace.requiredEvidenceMet,
+      matchedEvidence: (compatibilityTrace.matchedEvidence ?? []).join(", "),
+      missingEvidence: (compatibilityTrace.missingEvidence ?? []).join(", "),
+      contradictionEvidence: (compatibilityTrace.contradictionEvidence ?? []).join(", "),
+      reasons: (compatibilityTrace.reasons ?? compatibilityTrace.evidenceReasons ?? []).join(" | "),
     })),
   );
 }

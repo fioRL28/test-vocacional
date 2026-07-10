@@ -40,6 +40,7 @@ export type AdminDashboardData = {
     f1Score: number;
     features: number;
     lastTraining: string;
+    metricRows: number;
     metrics: Array<{
       accuracy: number;
       f1Score: number;
@@ -63,6 +64,8 @@ export type AdminDashboardData = {
     adminUsers: number;
     anonymousSessions: number;
     completedTests: number;
+    datasetCompleteRecords: number;
+    datasetIncompleteRecords: number;
     datasetRecords: number;
     generatedPredictions: number;
     modelAccuracy: number;
@@ -124,7 +127,7 @@ export function AdminDashboard({
             href="/admin/dataset"
             icon="database"
             label="Dataset"
-            meta="Registros"
+            meta="registros"
             value={formatNumber(data.summary.datasetRecords)}
           />
 
@@ -215,9 +218,6 @@ function Header({ generatedAt }: { generatedAt: string }) {
 }
 
 function SummaryGrid({ data }: { data: AdminDashboardData }) {
-  const warningCount = data.alerts.filter((alert) => alert.tone === "warning")
-    .length;
-
   const cards = [
     {
       accent: "purple" as const,
@@ -255,10 +255,10 @@ function SummaryGrid({ data }: { data: AdminDashboardData }) {
     },
     {
       accent: "orange" as const,
-      icon: "warning",
-      label: "Alertas activas",
-      meta: "Requieren atención",
-      value: formatNumber(warningCount || data.alerts.length),
+      icon: "database",
+      label: "Dataset actual",
+      meta: `${formatNumber(data.summary.datasetCompleteRecords)} completos / ${formatNumber(data.summary.datasetIncompleteRecords)} incompletos`,
+      value: formatNumber(data.summary.datasetRecords),
       isText: false,
     },
   ];
@@ -476,6 +476,8 @@ function ModelStatus({ model }: { model: AdminDashboardData["model"] }) {
     ["Precisión", formatMetric(model.precision)],
     ["Recall", formatMetric(model.recall)],
     ["F1 Score", formatMetric(model.f1Score)],
+    ["Base de métricas", `${formatNumber(model.metricRows)} registros`],
+    ["Dataset actual", `${formatNumber(model.datasetRows)} registros`],
     ["Último entrenamiento", model.lastTraining],
   ];
 
