@@ -1,11 +1,6 @@
 /*
-  Warnings:
-
-  - Added the required column `updatedAt` to the `questions` table without a default value. This is not possible if the table is not empty.
-  - Added the required column `updatedAt` to the `test_answers` table without a default value. This is not possible if the table is not empty.
-  - Added the required column `updatedAt` to the `test_open_answers` table without a default value. This is not possible if the table is not empty.
-  - Added the required column `updatedAt` to the `test_results` table without a default value. This is not possible if the table is not empty.
-
+  This migration adds required updatedAt columns with a temporary default so it
+  can run safely against pilot databases that already contain rows.
 */
 -- CreateEnum
 CREATE TYPE "OpenAnswerMode" AS ENUM ('OPEN', 'FORCED_CHOICE', 'GUIDED_REFLECTION');
@@ -17,13 +12,17 @@ ADD COLUMN     "optionalComment" BOOLEAN NOT NULL DEFAULT false,
 ADD COLUMN     "promptStyle" VARCHAR(80),
 ADD COLUMN     "scaleType" VARCHAR(80),
 ADD COLUMN     "semanticFocus" JSONB,
-ADD COLUMN     "updatedAt" TIMESTAMP(3) NOT NULL;
+ADD COLUMN     "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;
+
+ALTER TABLE "questions" ALTER COLUMN "updatedAt" DROP DEFAULT;
 
 -- AlterTable
 ALTER TABLE "test_answers" ADD COLUMN     "comment" TEXT,
 ADD COLUMN     "suspiciousInput" BOOLEAN NOT NULL DEFAULT false,
 ADD COLUMN     "suspiciousReason" TEXT,
-ADD COLUMN     "updatedAt" TIMESTAMP(3) NOT NULL;
+ADD COLUMN     "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;
+
+ALTER TABLE "test_answers" ALTER COLUMN "updatedAt" DROP DEFAULT;
 
 -- AlterTable
 ALTER TABLE "test_open_answers" ADD COLUMN     "answerMode" "OpenAnswerMode" NOT NULL DEFAULT 'OPEN',
@@ -34,13 +33,17 @@ ADD COLUMN     "selectedOptionId" VARCHAR(120),
 ADD COLUMN     "selectedSemanticFocus" JSONB,
 ADD COLUMN     "suspiciousInput" BOOLEAN NOT NULL DEFAULT false,
 ADD COLUMN     "suspiciousReason" TEXT,
-ADD COLUMN     "updatedAt" TIMESTAMP(3) NOT NULL;
+ADD COLUMN     "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;
+
+ALTER TABLE "test_open_answers" ALTER COLUMN "updatedAt" DROP DEFAULT;
 
 -- AlterTable
 ALTER TABLE "test_results" ADD COLUMN     "profileClarityScore" DECIMAL(5,2),
 ADD COLUMN     "resultPayload" JSONB,
 ADD COLUMN     "resultStabilityScore" DECIMAL(5,2),
-ADD COLUMN     "updatedAt" TIMESTAMP(3) NOT NULL;
+ADD COLUMN     "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;
+
+ALTER TABLE "test_results" ALTER COLUMN "updatedAt" DROP DEFAULT;
 
 -- AlterTable
 ALTER TABLE "test_sessions" ADD COLUMN     "adaptivePhase" VARCHAR(80),
