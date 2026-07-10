@@ -3,8 +3,8 @@ import path from "path";
 
 const CSV_FILES = {
   actual: {
-    filePath: "C:\\Users\\fiore\\Pictures\\data_test.csv",
-    fileName: "data_test.csv",
+    filePath: path.join(/*turbopackIgnore: true*/ process.cwd(), "data.csv"),
+    fileName: "data.csv",
   },
   inicial: {
     filePath: path.join(/*turbopackIgnore: true*/ process.cwd(), "data-inicial.csv"),
@@ -38,28 +38,32 @@ export type DatasetFeatureSummary = {
 export async function obtenerResumenDatasetCsv() {
   const entries = await Promise.all(
     Object.entries(CSV_FILES).map(async ([key, file]) => {
-      const metadata = await stat(file.filePath);
-      const content = await readFile(file.filePath, "utf8");
-      const { headers, rows } = parseCsv(content);
-      const statusSummary = buildStatusSummary(rows);
+      try {
+        const metadata = await stat(file.filePath);
+        const content = await readFile(file.filePath, "utf8");
+        const { headers, rows } = parseCsv(content);
+        const statusSummary = buildStatusSummary(rows);
 
-      return {
-        columns: headers.length,
-        dateDistribution: buildDateDistribution(rows),
-        features: buildFeatures(headers),
-        fileName: file.fileName,
-        key: key as CsvDatasetKey,
-        profileDistribution: buildProfileDistribution(rows),
-        rows: rows.length,
-        sample: rows.slice(0, 20),
-        sizeKb: Math.round(metadata.size / 1024),
-        statusSummary,
-        updatedAt: metadata.mtime,
-      };
+        return {
+          columns: headers.length,
+          dateDistribution: buildDateDistribution(rows),
+          features: buildFeatures(headers),
+          fileName: file.fileName,
+          key: key as CsvDatasetKey,
+          profileDistribution: buildProfileDistribution(rows),
+          rows: rows.length,
+          sample: rows.slice(0, 20),
+          sizeKb: Math.round(metadata.size / 1024),
+          statusSummary,
+          updatedAt: metadata.mtime,
+        };
+      } catch {
+        return null;
+      }
     }),
   );
 
-  return entries;
+  return entries.filter((entry) => entry !== null);
 }
 
 export async function obtenerCsvDataset(key: CsvDatasetKey) {
